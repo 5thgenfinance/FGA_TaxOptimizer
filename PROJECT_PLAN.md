@@ -8,10 +8,11 @@ Owner: Robert Maxwell
 - All tax-table data lives in external CSV files in `data/`. No table values are embedded in code.
 - The 17 named LAMBDAs become pure Python functions with unit tests.
 - The workbook's current outputs become the golden regression test.
+- A scenario JSON file (ordered name/value pairs of the `inp...` named input cells, report title, last-updated date) moves scenarios between Excel and the web app (section 12).
 
-**Non-goals (phase 1)**
+**Non-goals**
 - Validating current tax law. The spec is an as-built description, not a law check.
-- Schedule709 (Form 709 gift/GST grid). Defer to phase 3.
+- Schedule709 (Form 709 gift/GST grid): out of scope, will not be converted, imported or exported.
 
 ## 2. Stack
 | Layer | Choice | Reason |
@@ -20,6 +21,7 @@ Owner: Robert Maxwell
 | Validation | Pydantic v2 | Typed input and CSV-row models |
 | Math | `decimal.Decimal` for money, `Decimal` rates | Avoid float drift |
 | Data | CSV via stdlib `csv` (or pandas) | Tables stay editable in Excel |
+| Excel bridge | xlwings (Python) | Reads/writes the named input cells and exchanges scenario JSON; no VBA |
 | Tests | pytest + hypothesis | Golden case, edge cases, property tests |
 | Packaging | uv/pip, Dockerfile | Local and hosted deploy |
 
@@ -34,12 +36,14 @@ taxopt/
 │  ├─ tblAMT.csv
 │  ├─ tblNIIT.csv
 │  ├─ tblStatusAliases.csv       # NEW: status normalization
-│  └─ tblParameters.csv          # NEW: constants hard-coded in LAMBDAs
+│  ├─ tblParameters.csv          # NEW: constants hard-coded in LAMBDAs
+│  └─ tblInputMap.csv            # NEW: ordered input names, cells, types, fields
 ├─ app/
 │  ├─ main.py                    # FastAPI routes
 │  ├─ config.py                  # DATA_DIR, env settings
 │  ├─ models.py                  # Pydantic: FilerInputs, TaxResult, table rows
 │  ├─ tables.py                  # CSV loader + validators + lookups (cached)
+│  ├─ scenario_io.py             # NEW: ScenarioFile model, JSON import/export
 │  ├─ status.py                  # normalize_status()
 │  ├─ calc/
 │  │  ├─ ordinary.py             # IncomeTax, TaxRate bracket allocation
@@ -52,9 +56,12 @@ taxopt/
 │  │  └─ engine.py               # orchestrates TaxSheetSingle logic
 │  ├─ templates/ (base.html, form.html, results.html, tables.html)
 │  └─ static/
+├─ excel/
+│  └─ scenario_xlwings.py        # NEW: Excel <-> scenario JSON via xlwings
 ├─ tests/
 │  ├─ test_tables.py, test_rmd.py, test_ordinary.py, test_ltcg.py,
 │  │  test_amt.py, test_niit.py, test_socialsec.py, test_deductions.py
+│  ├─ test_scenario_io.py
 │  └─ test_golden_workbook.py
 ├─ scripts/validate_tables.py    # CLI check before deploy
 ├─ pyproject.toml
@@ -182,6 +189,8 @@ Year,Key,Single,Jointly,Separate
 ```
 Open item: Separate-status values in `tblParameters.csv` are placeholders. The workbook only states Single and Jointly (or MFS-lived-apart for SS), so confirm them.
 
+**data/tblInputMap.csv** (new; defined in section 12.3)
+
 ### 4.1 Loader and validation rules (`tables.py`)
 - Load once at startup, cache, and expose `reload_tables()` (admin endpoint) so a CSV edit doesn't need a redeploy.
 - Validate each file against a Pydantic row model. The checks below come from spec §3:
@@ -209,7 +218,7 @@ Open item: Separate-status values in `tblParameters.csv` are placeholders. The w
 | `AMT_ExemptionRate`, `AMT_Exemption`, `AMT_Tax`, `AMT_Owed` | `amt.*` | tblAMT |
 | Sheet formulas C6…M43 | `engine.compute(inputs) -> TaxResult` | all |
 
-Excel named cells map to `FilerInputs` fields: `inpFilingStatus`, `inpDateOfBirth`, `inpTaxYear`, `inpPriorYearEndIRABalance`, `inpWagesAndTips`, and so on. Spouse DOB (`E4`), `inpTaxWithheld` and `inpAdditionalTax` are named properly in the new model.
+Excel named cells map to `FilerInputs` fields through `data/tblInputMap.csv` (section 12.3): `inpFilingStatus`, `inpDateOfBirth`, `inpTaxYear`, `inpPriorYearEndIRABalance`, `inpWagesAndTips`, and so on.
 
 ### 5.1 Calculation order in `engine.compute` (from spec §5.2)
 1. RMD (`C6`). The distribution income is `C9 = C6`.
@@ -227,11 +236,12 @@ Excel named cells map to `FilerInputs` fields: `inpFilingStatus`, `inpDateOfBirt
 `TaxResult` returns every intermediate (bracket table, per-bucket tax, AMT steps) so the UI can show a line-by-line breakdown matching the sheet.
 
 ## 6. Web app
-- `GET /`: input form (status, DOB, spouse DOB, year dropdown from `supported_years()`, all income, deduction and credit fields).
+- `GET /`: input form (status, DOB, spouse DOB, year dropdown from `supported_years()`, all income, deduction and credit fields, report title).
 - `POST /calculate`: HTMX partial. It re-renders the results panel on every field change.
 - `GET /tables`: read-only view of each loaded CSV, with years and sources.
 - `POST /admin/reload`: reload CSVs (protect with a token).
 - `GET /api/calculate` (JSON): the same engine, for future integration with your RIA tools.
+- Scenario import/export endpoints and buttons: see section 12.
 - Display rules: currency `$#,##0`, rates `0%`, and sentinel limits shown as "No limit".
 - Optional later: PDF/Excel export of the result, branded client report, saved scenarios (SQLite).
 
@@ -282,15 +292,16 @@ Note that the standard-deduction check depends on `YEAR(TODAY())` in the workboo
 - Property tests: tax is non-decreasing in income, allocation buckets sum to taxable income, and the app never returns a negative tax.
 - Table tests: duplicate keys, unsorted buckets and missing years must fail loudly.
 - Cross-check: `income_tax()` (year-filtered) equals the bracket-allocation total.
+- Scenario JSON tests: see section 12.5.
 
 ## 9. Phases and deliverables
 | Phase | Scope | Done when |
 |---|---|---|
-| 0 | Repo skeleton, CSVs, loader, validator, CI | `validate_tables.py` passes |
+| 0 | Repo skeleton, CSVs (incl. `tblInputMap.csv`), loader, validator, CI | `validate_tables.py` passes |
 | 1 | Pure calc modules, `legacy=True` engine | Golden test passes to the cent |
-| 2 | FastAPI form, results page, tables view | Manual run matches the workbook for 3+ scenarios |
+| 2 | FastAPI form, results page, tables view, scenario JSON import/export (web + xlwings) | Manual run matches the workbook for 3+ scenarios; Excel/web round trip passes |
 | 3 | Fix flags (§7), more years and statuses, JSON API, Dockerfile | 2027 loads by CSV edit only |
-| 4 | Schedule709, saved scenarios, PDF report, auth | As prioritized |
+| 4 | Saved scenarios (SQLite), PDF report, auth | As prioritized |
 
 ## 10. Annual maintenance (no code change)
 1. Append the new year's rows to each CSV, with a full set across all dependent tables (the spec notes that 2027 is not loaded).
@@ -302,4 +313,104 @@ Note that the standard-deduction check depends on `YEAR(TODAY())` in the workboo
 1. Is Separate (MFS) status in scope for phase 1?
 2. Should the app default to `legacy=False` (fixes on)?
 3. Where do the 2026 37% bracket and the missing 72/101+ RMD ages come from? Please supply sourced figures.
-4. Is the Schedule709 grid needed in the web app?
+4. Confirm `version!B12` and `version!B13` are empty so they can hold the report title and last-updated date (section 12.7).
+
+## 12. Scenario JSON import/export
+
+### 12.1 Purpose
+One JSON file carries every editable input of a scenario between Excel and the web app. The same file is produced and consumed by both. It holds the `inp...` named-range inputs as ordered name/value pairs, plus a report title and a last-updated date. Schedule709 is out of scope: nothing from that sheet is imported or exported.
+
+### 12.2 File format (schemaVersion 1.0)
+```json
+{
+  "schemaVersion": "1.0",
+  "reportTitle": "Maxwell 2026 Roth Conversion Study",
+  "lastUpdated": "2026-11-16T18:53:00",
+  "workbookVersion": "2026.3.0",
+  "inputs": [
+    {"name": "inpTaxYear", "value": 2026},
+    {"name": "inpFilingStatus", "value": "Jointly"},
+    {"name": "inpDateOfBirth", "value": "1952-04-14"},
+    {"name": "inpSpouseDateOfBirth", "value": "1974-09-30"},
+    {"name": "inpPriorYearEndIRABalance", "value": 1000000},
+    {"name": "inpAdditionalIncome", "value": null}
+  ]
+}
+```
+Rules:
+- `inputs` is an ordered array of `{name, value}` pairs. Order follows `data/tblInputMap.csv`, which follows the sheet layout.
+- `reportTitle` is a required string, 1–200 characters. `lastUpdated` is a required ISO 8601 local timestamp. The exporter sets it to the time of export.
+- Dates are `YYYY-MM-DD` strings. Money is a plain number (no symbols or strings). Rates are fractions. A blank cell is `null`.
+- Only editable input cells are exported. Formula (`calc...`) cells are never written to the file, and an importer must skip any pair whose target is a formula.
+- Unknown names are ignored on import and listed in a warning. Missing names leave the existing value unchanged.
+- Files are UTF-8 without a BOM. Readers open with `utf-8-sig` so a BOM does not break them.
+
+### 12.3 Input map (external CSV, not in code)
+`data/tblInputMap.csv` defines the pairs, their order, the Excel fallback address, and the Python field.
+```csv
+Order,Name,Cell,Type,Field
+1,inpTaxYear,H10,int,tax_year
+2,inpFilingStatus,C3,text,filing_status
+3,inpDateOfBirth,C4,date,dob
+4,inpSpouseDateOfBirth,E4,date,spouse_dob
+5,inpPriorYearEndIRABalance,C5,money,prior_ye_ira_balance
+6,inpSocialSecurityBenefits,C10,money,social_security_benefits
+7,inpIRAConversion,C11,money,ira_conversion
+8,inpQualifiedDividends,C12,money,qualified_dividends
+9,inpTaxableInterest,C13,money,taxable_interest
+10,inpOrdinaryDividends,C14,money,ordinary_dividends
+11,inpAdditionalIncome,C15,money,additional_income
+12,inpShortTermCapitalGainLoss,C16,money,short_term_gain_loss
+13,inpWagesAndTips,C17,money,wages_and_tips
+14,inpLongTermCapitalGains,C18,money,long_term_capital_gains
+15,inpCapitalLossCarryover,C19,money,capital_loss_carryover
+16,inpScheduleADeductions,C29,money,schedule_a_deductions
+17,inpQualifiedBusinessIncome,C30,money,qualified_business_income
+18,inpScheduleASALT,J35,money,schedule_a_salt
+19,inpAMTOtherPreferences,J38,money,amt_other_preferences
+20,inpTaxWithheld,C42,money,tax_withheld
+21,inpAdditionalTax,C43,money,additional_tax
+```
+Notes:
+- Rows 1–3 and 5–19 are existing `inp...` names in the workbook spec.
+- `inpSpouseDateOfBirth`, `inpTaxWithheld` and `inpAdditionalTax` are the names the spec recommends but did not add. Until they exist in the workbook, the xlwings script falls back to the `Cell` column (E4, C42, C43).
+- `inpScheduleADeductions`, `inpIRAConversion`, `inpSocialSecurityBenefits` and `inpShortTermCapitalGainLoss` are sheet-scoped to `TaxSheetSingle`. The script resolves every name through that worksheet.
+- `C9` (RMD) is a formula, so it is not an input and is not in the file.
+
+### 12.4 Python components
+- `app/scenario_io.py`: `ScenarioFile` Pydantic model (`schema_version`, `report_title`, `last_updated`, `workbook_version`, `inputs: list[InputPair]`). It provides `to_filer_inputs()` and `from_filer_inputs(inputs, title)`, both driven by `tblInputMap.csv`.
+- Validation: reject an unsupported `schemaVersion` major. Check type per `Type` column (date parse, numeric, non-negative where the engine requires). Warn on unknown names. Require `reportTitle`.
+- `GET /api/scenario/export?title=...` returns the JSON file and stamps `lastUpdated`.
+- `POST /api/scenario/import` accepts the JSON, validates it, fills the form and returns a warnings list.
+- UI: "Import scenario" and "Export scenario" buttons plus an editable Report title field on the form.
+- The results page and any PDF/print output show the report title and last-updated date in the header.
+- `tables.py` validates `tblInputMap.csv` at startup: unique `Order` and `Name`, valid `Type`, and every `Field` exists on `FilerInputs`.
+
+### 12.5 Tests
+- Round trip: Excel export → Python import → Python export is identical in names, order and values.
+- The golden-case inputs from section 8 survive export and import unchanged.
+- Failure cases: blank values, a missing title, a malformed date, an unknown name, a formula target, and a BOM-prefixed file.
+
+### 12.6 Excel integration: xlwings (replaces VBA)
+`excel/scenario_xlwings.py` uses xlwings to read and write the input cells in the open workbook. It needs Excel and Python on the machine (`pip install xlwings`). No VBA module is required.
+
+Command-line use, with the workbook open in Excel:
+```
+python excel/scenario_xlwings.py export --file scenario.json --title "Maxwell 2026 Roth Conversion Study"
+python excel/scenario_xlwings.py import --file scenario.json
+```
+Options:
+- `--book PATH` targets a specific workbook. Without it the script uses the active workbook.
+- The same `export_scenario(book, path, title)` and `import_scenario(book, path)` functions can be called from the xlwings add-in ribbon or from a one-line `RunPython` button if you want buttons inside the workbook later.
+
+Behavior:
+- The input list, order and cell fallbacks come from `data/tblInputMap.csv`, the same file the web app uses. There is no second copy of the map.
+- Formula cells are never overwritten on import. They are listed in the summary.
+- Dates are read and written as real Excel dates. A `null` value clears the cell.
+- `Application.Calculate` runs after an import so the sheet reflects the new inputs.
+- Windows and Mac are both supported by xlwings. Only the Windows path has been considered in the design; test on Mac before relying on it.
+
+### 12.7 Workbook changes required
+- Add two metadata cells on the `version` sheet (rows 12–13 are free per the spec layout; confirm): `A12` "Report Title" with `B12` named `inpReportTitle`, and `A13` "Last Updated" with `B13` named `inpLastUpdated`. The script uses the cell addresses if the names do not exist.
+- Optionally create the three recommended names `inpSpouseDateOfBirth` (E4), `inpTaxWithheld` (C42), `inpAdditionalTax` (C43). Existing formulas are unaffected.
+- No other layout or formula changes.
