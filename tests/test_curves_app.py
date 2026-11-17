@@ -5,33 +5,54 @@ import pytest
 pytest.importorskip("streamlit")
 from streamlit.testing.v1 import AppTest  # noqa: E402
 
+from app import curves  # noqa: E402
+
 APP = str(Path(__file__).resolve().parent.parent / "streamlit_app.py")
+SHOW = {lever: f"wi_show_{lever}" for lever in curves.LEVERS}
 
 
 def run_app() -> AppTest:
     return AppTest.from_file(APP, default_timeout=60).run()
 
 
-def test_the_curves_are_on_by_default_and_the_app_runs():
+def test_every_lever_shows_its_curve_and_notes_by_default():
     at = run_app()
     assert not at.exception
-    assert at.checkbox(key="wi_curves").value is True
+    assert all(at.checkbox(key=key).value is True for key in SHOW.values())
 
 
-def test_the_curves_can_be_turned_off_and_on():
+def test_each_lever_can_be_hidden_and_shown_on_its_own():
     at = run_app()
-    at.checkbox(key="wi_curves").uncheck().run()
+    for lever, key in SHOW.items():
+        at.checkbox(key=key).uncheck().run()
+        assert not at.exception, lever
+        assert at.checkbox(key=key).value is False
+        others = [k for other, k in SHOW.items() if other != lever]
+        assert all(at.checkbox(key=k).value is True for k in others), lever
+        at.checkbox(key=key).check().run()
+        assert not at.exception, lever
+        assert at.checkbox(key=key).value is True
+
+
+def test_all_levers_can_be_hidden_at_once():
+    at = run_app()
+    for key in SHOW.values():
+        at.checkbox(key=key).uncheck()
+    at.run()
     assert not at.exception
-    at.checkbox(key="wi_curves").check().run()
+    at.slider(key="wi_ira").set_value(20_000).run()
     assert not at.exception
 
 
-def test_the_marginal_rate_target_can_be_changed():
+def test_the_marginal_rate_target_can_be_changed_and_survives_hiding_the_notes():
     at = run_app()
     assert at.selectbox(key="wi_ira_cap").value == 22
     at.selectbox(key="wi_ira_cap").set_value(12).run()
-    assert not at.exception
-    assert at.session_state["wi_ira_cap"] == 12
+    assert not at.exception and at.session_state["wi_ira_cap"] == 12
+    at.checkbox(key=SHOW["extra_ira"]).uncheck().run()
+    assert not at.exception and at.session_state["wi_ira_cap"] == 12
+    at.checkbox(key=SHOW["extra_ira"]).check().run()
+    assert at.selectbox(key="wi_ira_cap").value == 12
 
 
 def test_curves_follow_the_other_sliders_without_errors():
