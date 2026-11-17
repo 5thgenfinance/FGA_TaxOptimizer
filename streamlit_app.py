@@ -241,6 +241,14 @@ LEVER_UI = {
                           "as ordinary income and does not change the required minimum distribution."},
 }
 SHOW_KEYS = {lever: f"wi_show_{lever}" for lever in curves.LEVERS}
+CONTROL_WIDTH = "60%"  # each slider and its curve are 40% narrower than the column
+
+
+def _whatif_css() -> str:
+    """Narrow the four sliders and their curves so the pairs fit comfortably in two columns."""
+    selectors = [f".st-key-{key}" for key in whatif.SLIDER_KEYS.values()]
+    selectors += [f".st-key-wi_chart_{lever}" for lever in curves.LEVERS]
+    return f"{', '.join(selectors)} {{ width: {CONTROL_WIDTH} !important; }}"
 
 
 def _adjustments(values: dict) -> whatif.Adjustments:
@@ -303,7 +311,8 @@ def _lever_block(lever: str, values: dict, analyses: dict, alt_result) -> int:
                        help="Hide this lever's chart and planning notes. The slider keeps working.")
     analysis = analyses.get(lever) if show else None
     if analysis and analysis["points"]:
-        _curve_chart(analysis, values[lever], alt_result.total_tax)
+        with st.container(key=f"wi_chart_{lever}"):
+            _curve_chart(analysis, values[lever], alt_result.total_tax)
     value = st.slider(ui["label"], low, high, 0, 1_000, key=whatif.SLIDER_KEYS[lever], format=ui["format"], help=ui["help"])
     if lever == "extra_ira":
         st.selectbox("Keep the tax on each extra dollar at or below", curves.MARGINAL_CAPS, index=2, key="wi_ira_cap",
@@ -335,6 +344,7 @@ def _whatif_tab(tables) -> None:
         st.error(f"Cannot calculate the what-if: {exc}")
         return
 
+    st.markdown(f"<style>{_whatif_css()}</style>", unsafe_allow_html=True)
     st.caption("Each chart sweeps one lever across its range while the other sliders stay where you set them. The top "
                "line is total tax; the lower line is the tax on the next dollar. The dot is your slider setting. A flat "
                "stretch is free, a steep one is expensive, and a step up marks a bracket or other threshold. Use the "
