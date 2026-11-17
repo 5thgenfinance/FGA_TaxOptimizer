@@ -1,0 +1,92 @@
+{
+  "schemaVersion": "1.0",
+  "reportTitle": "Maxwell 2026 Roth Conversion Study",
+  "lastUpdated": "2026-11-16T21:20:01",
+  "workbookVersion": "2026.3.0",
+  "inputs": [
+    {
+      "name": "inpTaxYear",
+      "value": 2026
+    },
+    {
+      "name": "inpFilingStatus",
+      "value": "Jointly"
+    },
+    {
+      "name": "inpDateOfBirth",
+      "value": "1952-04-14"
+    },
+    {
+      "name": "inpSpouseDateOfBirth",
+      "value": "1974-09-30"
+    },
+    {
+      "name": "inpPriorYearEndIRABalance",
+      "value": 1000000
+    },
+    {
+      "name": "inpSocialSecurityBenefits",
+      "value": 0
+    },
+    {
+      "name": "inpIRAConversion",
+      "value": 0
+    },
+    {
+      "name": "inpQualifiedDividends",
+      "value": 1800
+    },
+    {
+      "name": "inpTaxableInterest",
+      "value": 900
+    },
+    {
+      "name": "inpOrdinaryDividends",
+      "value": 2400
+    },
+    {
+      "name": "inpAdditionalIncome",
+      "value": null
+    },
+    {
+      "name": "inpShortTermCapitalGainLoss",
+      "value": -3000
+    },
+    {
+      "name": "inpWagesAndTips",
+      "value": 145000
+    },
+    {
+      "name": "inpLongTermCapitalGains",
+      "value": 6000
+    },
+    {
+      "name": "inpCapitalLossCarryover",
+      "value": null
+    },
+    {
+      "name": "inpScheduleADeductions",
+      "value": 12000
+    },
+    {
+      "name": "inpQualifiedBusinessIncome",
+      "value": null
+    },
+    {
+      "name": "inpScheduleASALT",
+      "value": null
+    },
+    {
+      "name": "inpAMTOtherPreferences",
+      "value": null
+    },
+    {
+      "name": "inpTaxWithheld",
+      "value": 16500
+    },
+    {
+      "name": "inpAdditionalTax",
+      "value": null
+    }
+  ]
+}
