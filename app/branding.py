@@ -16,7 +16,8 @@ from app.config import REPO_ROOT
 
 BRAND_JSON = REPO_ROOT / "brand" / "fga_brand.json"
 ASSET_DIR = REPO_ROOT / "assets" / "brand"
-PANEL = "#e3e9f4"  # expander and sidebar panel fill
+PANEL = "#e3e9f4"  # sidebar fill
+RULE = "#c9d3e6"  # thin borders
 MIME = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg"}
 
 DEFAULT_BRAND = {
@@ -85,8 +86,8 @@ def format_updated(iso_timestamp: str) -> str:
 
 
 def header_html(brand: dict, title: str) -> str:
-    """The navy header band: shield, title and tagline."""
-    uri = data_uri(logo_file(brand, "shield_light"))
+    """The white header band: navy shield, title and tagline."""
+    uri = data_uri(logo_file(brand, "shield_dark"))
     image = f'<img src="{uri}" alt="">' if uri else ""
     return (
         '<div class="fga-header">'
@@ -96,7 +97,11 @@ def header_html(brand: dict, title: str) -> str:
 
 
 def css(brand: dict) -> str:
-    """Stylesheet that gives Streamlit the Fifth Generation look."""
+    """Stylesheet that gives Streamlit the Fifth Generation look.
+
+    Headings use the heading font; everything else uses the body font. The navy logos are
+    drawn on light surfaces, and ``multiply`` blending hides the white of the JPG files.
+    """
     colors, fonts = brand["colors"], brand["fonts"]
     navy, bronze, off, char = colors["navy"], colors["bronze"], colors["offwhite"], colors["charcoal"]
     heading, body = fonts["heading"], fonts["body"]
@@ -104,16 +109,21 @@ def css(brand: dict) -> str:
                 f"&family={body.replace(' ', '+')}:wght@400;600;700")
     return f"""
 @import url('https://fonts.googleapis.com/css2?{families}&display=swap');
-.stApp {{ background: {off}; color: {navy}; font-family: '{body}', sans-serif; }}
-h1, h2, h3, h4 {{ font-family: '{heading}', serif; color: {navy}; }}
+.stApp, .stApp p, .stApp li, .stApp label, .stApp input, .stApp textarea, .stApp button,
+.stApp [data-baseweb], [data-testid="stMetricLabel"], [data-testid="stCaptionContainer"],
+.fga-meta, .fga-tagline {{ font-family: '{body}', sans-serif; }}
+.stApp {{ background: {off}; color: {navy}; }}
+h1, h2, h3, h4, h5, h6, [data-testid="stHeading"], .fga-title, .fga-side-title,
+[data-testid="stMetricValue"] {{ font-family: '{heading}', serif; color: {navy}; }}
 header[data-testid="stHeader"] {{ background: transparent; }}
 .block-container {{ padding-top: 1.2rem; }}
 
-.fga-header {{ display: flex; align-items: center; gap: 14px; background: {navy};
-  border-bottom: 2px solid {bronze}; padding: 14px 22px; margin-bottom: 1.2rem; }}
-.fga-header img {{ height: 46px; mix-blend-mode: lighten; }}
-.fga-title {{ font-family: '{heading}', serif; color: {off}; font-size: 1.6rem; font-weight: 700; line-height: 1.1; }}
-.fga-tagline {{ color: {bronze}; letter-spacing: .22em; font-size: .62rem; text-transform: uppercase; margin-top: 4px; }}
+.fga-header {{ display: flex; align-items: center; gap: 14px; background: #ffffff;
+  border-bottom: 3px solid {bronze}; padding: 14px 22px; margin-bottom: 1.2rem; }}
+.fga-header img {{ height: 46px; mix-blend-mode: multiply; }}
+.fga-title {{ color: {navy}; font-size: 1.6rem; font-weight: 700; line-height: 1.1; }}
+.fga-tagline {{ color: {bronze}; letter-spacing: .22em; font-size: .62rem; text-transform: uppercase;
+  margin-top: 4px; font-weight: 600; }}
 .fga-meta {{ color: {char}; font-size: .9rem; margin: -.4rem 0 1rem 0; }}
 
 .st-key-report_title input {{ font-family: '{heading}', serif; font-style: italic; font-size: 2.1rem;
@@ -121,21 +131,16 @@ header[data-testid="stHeader"] {{ background: transparent; }}
   border-bottom: 1px solid #cfc9bd; border-radius: 0; padding-left: 0; }}
 .st-key-report_title label {{ display: none; }}
 
-[data-testid="stMetricValue"] {{ font-family: '{heading}', serif; color: {navy}; font-size: 2rem; }}
+[data-testid="stMetricValue"] {{ font-size: 2rem; }}
 [data-testid="stMetricLabel"] p {{ font-size: .78rem; color: {char}; }}
 
-[data-testid="stSidebar"] {{ background: {navy}; }}
-[data-testid="stSidebar"] [data-testid="stLogo"] {{ mix-blend-mode: lighten; }}
-[data-testid="stSidebar"] h1, [data-testid="stSidebar"] h2, [data-testid="stSidebar"] h3,
-[data-testid="stSidebar"] .fga-side-title {{ font-family: '{heading}', serif; color: {off}; }}
+[data-testid="stSidebar"] {{ background: {PANEL}; border-right: 1px solid {RULE}; }}
+[data-testid="stSidebar"] [data-testid="stLogo"] {{ mix-blend-mode: multiply; }}
 .fga-side-title {{ font-size: 1.5rem; font-weight: 700; margin: .4rem 0 .6rem 0; }}
-[data-testid="stSidebar"] p, [data-testid="stSidebar"] label {{ color: {off}; }}
-[data-testid="stSidebar"] [data-testid="stExpander"] details {{ background: {PANEL};
-  border: 1px solid #c9d3e6; border-radius: 4px; margin-bottom: .5rem; }}
-[data-testid="stSidebar"] [data-testid="stExpander"] summary p {{ color: {navy}; font-weight: 600; }}
-[data-testid="stSidebar"] [data-testid="stExpander"] p,
-[data-testid="stSidebar"] [data-testid="stExpander"] label,
-[data-testid="stSidebar"] [data-testid="stExpander"] span {{ color: {navy}; }}
+[data-testid="stSidebar"] p, [data-testid="stSidebar"] label {{ color: {navy}; }}
+[data-testid="stSidebar"] [data-testid="stExpander"] details {{ background: #ffffff;
+  border: 1px solid {RULE}; border-radius: 4px; margin-bottom: .5rem; }}
+[data-testid="stSidebar"] [data-testid="stExpander"] summary p {{ font-weight: 600; }}
 
 .stButton > button, .stDownloadButton > button {{ border: 1px solid {bronze}; color: {navy}; background: #ffffff; }}
 .stButton > button:hover, .stDownloadButton > button:hover {{ border-color: {navy}; color: {navy}; background: {PANEL}; }}
