@@ -3,16 +3,21 @@
 Pure Python (openpyxl), so it works on Streamlit Community Cloud with no Excel installed. The
 JSON has the same shape as ``scenario_io.export_scenario`` writes, so it is validated and
 loaded by ``scenario_io.import_scenario``.
+
+Each input is located by, in order: its current name, its old names (excel/input_name_aliases.csv,
+for workbooks from before the naming-convention migration) and finally its fixed cell address.
 """
 from __future__ import annotations
 
+import csv
+import io
 import json
 import re
 from dataclasses import dataclass, field
 from datetime import datetime
 from io import BytesIO
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any, Iterable, Mapping
 
 from app.excel_values import to_json_value
 
@@ -24,6 +29,7 @@ UPDATED_CELL = "B13"
 SCHEMA_VERSION = "1.0"
 DEFAULT_TITLE = "Tax Retirement Optimizer Scenario"
 MAX_BYTES = 25 * 1024 * 1024
+ALIAS_FILE = Path(__file__).resolve().parents[1] / "excel" / "input_name_aliases.csv"
 
 
 class WorkbookError(ValueError):
@@ -37,6 +43,22 @@ class Conversion:
     filled: int
     blank: list[str]
     warnings: list[str] = field(default_factory=list)
+    via_alias: dict[str, str] = field(default_factory=dict)
+    via_address: list[str] = field(default_factory=list)
+
+
+def load_aliases(path: Path | str = ALIAS_FILE) -> dict[str, list[str]]:
+    """Old names per current input name, in priority order (file order). Missing file -> {}."""
+    try:
+        text = Path(path).read_text(encoding="utf-8-sig")
+    except OSError:
+        return {}
+    aliases: dict[str, list[str]] = {}
+    for row in csv.DictReader(io.StringIO(text)):
+        name, alias = (row.get("Name") or "").strip(), (row.get("Alias") or "").strip()
+        if name and alias and not name.startswith("#"):
+            aliases.setdefault(name, []).append(alias)
+    return aliases
 
 
 def _single_cell(defined_name: Any, wb: Any):
@@ -54,15 +76,34 @@ def _single_cell(defined_name: Any, wb: Any):
     return wb[sheet][coord]
 
 
-def _input_cell(wb: Any, ws: Any, name: str, address: str):
-    """Prefer the workbook-wide name, then the sheet-scoped name, then the fixed address."""
-    for scope in (wb.defined_names, ws.defined_names):
-        defined = scope.get(name)
+def _scopes(wb: Any, ws: Any) -> list[dict[str, Any]]:
+    """Defined names by lower-case name (Excel names are case-insensitive): workbook, then sheet."""
+    return [{key.lower(): value for key, value in scope.items()} for scope in (wb.defined_names, ws.defined_names)]
+
+
+def _find(wb: Any, scopes: list[dict[str, Any]], name: str):
+    for scope in scopes:
+        defined = scope.get(name.lower())
         if defined is not None:
             cell = _single_cell(defined, wb)
             if cell is not None:
                 return cell
-    return ws[address]
+    return None
+
+
+def _input_cell(wb: Any, ws: Any, scopes: list[dict[str, Any]], row: Any, aliases: Mapping[str, list[str]]):
+    """Find an input's cell. Order: current name, then old names (priority order), then address.
+
+    Returns (cell, source) where source is "name", "alias:<old name>" or "address".
+    """
+    cell = _find(wb, scopes, row.Name)
+    if cell is not None:
+        return cell, "name"
+    for alias in aliases.get(row.Name, []):
+        cell = _find(wb, scopes, alias)
+        if cell is not None:
+            return cell, f"alias:{alias}"
+    return ws[row.Cell], "address"
 
 
 def _timestamp(value: Any) -> str:
@@ -85,11 +126,16 @@ def _title(meta: Any, filename: str | None) -> str:
     return stem[:200] or DEFAULT_TITLE
 
 
-def convert_workbook(data: bytes, input_rows: Iterable[Any], filename: str | None = None) -> Conversion:
+def convert_workbook(data: bytes, input_rows: Iterable[Any], filename: str | None = None,
+                     aliases: Mapping[str, list[str]] | None = None) -> Conversion:
     """Read the input cells of ``data`` (an .xlsx/.xlsm file) and build scenario JSON.
 
     ``input_rows`` are the tblInputMap rows (Name, Cell, Type). Blank cells become null.
+    ``aliases`` maps a current input name to its old names (default: excel/input_name_aliases.csv);
+    current names always win, then old names, then the fixed cell address.
     """
+    if aliases is None:
+        aliases = load_aliases()
     if len(data) > MAX_BYTES:
         raise WorkbookError("The workbook is larger than 25 MB.")
     try:
@@ -106,9 +152,14 @@ def convert_workbook(data: bytes, input_rows: Iterable[Any], filename: str | Non
     ws = wb[INPUT_SHEET]
     meta = wb[META_SHEET] if META_SHEET in wb.sheetnames else None
 
-    pairs, blank, problems = [], [], []
+    scopes = _scopes(wb, ws)
+    pairs, blank, problems, via_alias, via_address = [], [], [], {}, []
     for row in input_rows:
-        cell = _input_cell(wb, ws, row.Name, row.Cell)
+        cell, source = _input_cell(wb, ws, scopes, row, aliases)
+        if source.startswith("alias:"):
+            via_alias[row.Name] = source.split(":", 1)[1]
+        elif source == "address" and row.Name in aliases:  # inputs that never had a name stay quiet
+            via_address.append(getattr(row, "Label", row.Name))
         value = to_json_value(row.Name, cell.value, row.Type, problems)
         if value is None:
             blank.append(row.Name)
@@ -126,5 +177,10 @@ def convert_workbook(data: bytes, input_rows: Iterable[Any], filename: str | Non
         "inputs": pairs,
     }
     warnings = [f"Workbook cell skipped: {p}" for p in problems]
+    if via_alias:
+        found = ", ".join(f"{old} -> {new}" for new, old in via_alias.items())
+        warnings.append(f"This workbook uses old input names (found {len(via_alias)}): {found}.")
+    if via_address:
+        warnings.append("No named range found, so these were read by cell address: " + ", ".join(via_address) + ".")
     return Conversion(json.dumps(payload, indent=2, ensure_ascii=False) + "\n", title,
-                      len(pairs) - len(blank), blank, warnings)
+                      len(pairs) - len(blank), blank, warnings, via_alias, via_address)

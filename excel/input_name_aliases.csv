@@ -1,0 +1,19 @@
+Name,Alias,Note
+inpTaxYear,year,Workbook-scoped; renamed in the 2026 naming-convention migration
+inpFilingStatus,status,Workbook-scoped
+inpDateOfBirth,DOB,Workbook-scoped
+inpPriorYearEndIRABalance,priorIRAbal,Workbook-scoped; not the same as the broken name IRABalance
+inpSocialSecurityBenefits,SSI,Sheet-scoped (TaxSheetSingle)
+inpIRAConversion,RothConv,Sheet-scoped (TaxSheetSingle)
+inpQualifiedDividends,QualDivs,Workbook-scoped
+inpTaxableInterest,TaxableInt,Workbook-scoped
+inpOrdinaryDividends,OrdDivs,Workbook-scoped
+inpAdditionalIncome,AddlIncome,Workbook-scoped
+inpShortTermCapitalGainLoss,STcapgain,Sheet-scoped (TaxSheetSingle)
+inpWagesAndTips,wages,Workbook-scoped
+inpLongTermCapitalGains,LTcapgains,Workbook-scoped
+inpCapitalLossCarryover,losscarry,Workbook-scoped
+inpScheduleADeductions,Deductions,Sheet-scoped (TaxSheetSingle)
+inpQualifiedBusinessIncome,QualBusinessInc,Workbook-scoped
+inpScheduleASALT,SALTschedA,Workbook-scoped
+inpAMTOtherPreferences,OtherPreferences,Workbook-scoped
