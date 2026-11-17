@@ -8,6 +8,8 @@ from streamlit.testing.v1 import AppTest  # noqa: E402
 from app import whatif  # noqa: E402
 
 APP = str(Path(__file__).resolve().parent.parent / "streamlit_app.py")
+INPUT_KEYS = ("in_tax_year", "in_filing_status", "in_dob", "in_wages_and_tips", "in_long_term_capital_gains",
+              "in_short_term_gain_loss", "in_schedule_a_deductions", "in_ira_conversion", "in_prior_ye_ira_balance")
 
 
 def run_app() -> AppTest:
@@ -31,10 +33,11 @@ def test_moving_each_slider_recalculates_without_errors():
 
 def test_the_sliders_do_not_change_the_real_inputs():
     at = run_app()
-    before = {k: v for k, v in at.session_state.filtered_state.items() if k.startswith("in_")}
-    at.slider(key="wi_ira").set_value(50_000).run()
-    after = {k: v for k, v in at.session_state.filtered_state.items() if k.startswith("in_")}
-    assert before == after
+    before = {key: at.session_state[key] for key in INPUT_KEYS}
+    for key, value in ("wi_ira", 50_000), ("wi_ltcg", 30_000), ("wi_stcg", -10_000), ("wi_deductions", 20_000):
+        at.slider(key=key).set_value(value).run()
+    assert not at.exception
+    assert {key: at.session_state[key] for key in INPUT_KEYS} == before
 
 
 def test_reset_returns_every_slider_to_zero():
