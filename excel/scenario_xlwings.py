@@ -5,18 +5,28 @@ Usage (workbook open in Excel):
     python excel/scenario_xlwings.py import --file scenario.json
 
 The input list, order and cell fallbacks come from data/tblInputMap.csv.
+Requires xlwings and desktop Excel:  pip install -e ".[excel]"
 """
 from __future__ import annotations
 
 import argparse
 import csv
 import json
+import sys
 from datetime import date, datetime
 from pathlib import Path
 
-import xlwings as xw
+REPO_ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(REPO_ROOT))
 
-DATA_DIR = Path(__file__).resolve().parent.parent / "data"
+from app.excel_values import to_json_value  # noqa: E402
+
+try:
+    import xlwings as xw
+except ModuleNotFoundError:  # give a useful message instead of a bare traceback
+    sys.exit('xlwings is not installed. Run:  python -m pip install -e ".[excel]"')
+
+DATA_DIR = REPO_ROOT / "data"
 INPUT_SHEET = "TaxSheetSingle"
 META_SHEET = "version"
 VERSION_CELL = "B4"
@@ -49,20 +59,6 @@ def _is_formula(rng) -> bool:
     return isinstance(f, str) and f.startswith("=")
 
 
-def _to_json_value(v, typ: str):
-    if v is None or v == "":
-        return None
-    if isinstance(v, datetime):
-        return v.date().isoformat()
-    if isinstance(v, date):
-        return v.isoformat()
-    if typ == "int":
-        return int(v)
-    if typ == "money" and isinstance(v, (int, float)):
-        return int(v) if float(v).is_integer() else float(v)
-    return v
-
-
 def _from_json_value(v, typ: str):
     if v is None:
         return None
@@ -80,18 +76,15 @@ def _meta(book, name: str, addr: str):
 
 
 def export_scenario(book, path, title: str | None = None) -> dict:
+    """Write the scenario JSON. The workbook is only touched after the file is built."""
     ws = book.sheets[INPUT_SHEET]
     title_rng = _meta(book, TITLE_NAME, TITLE_CELL)
     updated_rng = _meta(book, UPDATED_NAME, UPDATED_CELL)
-    if title:
-        title_rng.value = title
-    report_title = (title_rng.value if title_rng is not None else None) or title or DEFAULT_TITLE
+    stored_title = title_rng.value if title_rng is not None else None
+    report_title = title or (str(stored_title) if stored_title else None) or DEFAULT_TITLE
     stamp = datetime.now().replace(microsecond=0).isoformat()
-    if updated_rng is not None:
-        updated_rng.value = stamp
 
-    version_rng = book.sheets[META_SHEET].range(VERSION_CELL)
-    inputs, missing = [], []
+    inputs, missing, problems = [], [], []
     for row in load_input_map():
         rng = _resolve(ws, row["Name"], row["Cell"])
         if rng is None:
@@ -100,18 +93,23 @@ def export_scenario(book, path, title: str | None = None) -> dict:
         elif _is_formula(rng):
             value = None
         else:
-            value = _to_json_value(rng.value, row["Type"])
+            value = to_json_value(row["Name"], rng.value, row["Type"], problems)
         inputs.append({"name": row["Name"], "value": value})
 
     payload = {
         "schemaVersion": SCHEMA_VERSION,
         "reportTitle": str(report_title),
         "lastUpdated": stamp,
-        "workbookVersion": str(version_rng.value or ""),
+        "workbookVersion": str(book.sheets[META_SHEET].range(VERSION_CELL).value or ""),
         "inputs": inputs,
     }
     Path(path).write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
-    return {"exported": len(inputs), "cells_not_found": missing}
+
+    if title and title_rng is not None:
+        title_rng.value = title
+    if updated_rng is not None:
+        updated_rng.value = stamp
+    return {"exported": len(inputs), "cells_not_found": missing, "problems": problems}
 
 
 def import_scenario(book, path) -> dict:
@@ -177,6 +175,8 @@ def main() -> None:
     else:
         result = import_scenario(book, args.file)
     print(json.dumps(result, indent=2))
+    if result.get("problems"):
+        print("Some cells held unexpected values and were exported as blank; see 'problems' above.")
 
 
 if __name__ == "__main__":
