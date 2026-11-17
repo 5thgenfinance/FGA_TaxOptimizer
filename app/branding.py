@@ -139,8 +139,8 @@ header[data-testid="stHeader"] svg {{ fill: #ffffff !important; }}
 
 div:has(> .st-key-fga_header) {{ position: sticky; top: 3.75rem; z-index: 999; background: {off}; padding-bottom: 10px; }}
 .st-key-fga_header {{ background: {navy}; width: calc(100% + 4rem) !important; max-width: none !important;
-  margin: 0 -2rem; padding: 8px 2rem 10px 2rem; border-bottom: 3px solid {bronze}; box-sizing: border-box; }}
-.fga-header {{ display: flex; align-items: center; gap: 12px; position: relative; top: -2px; }}
+  margin: 0 -2rem; padding: 4px 2rem 18px 2rem; border-bottom: 3px solid {bronze}; box-sizing: border-box; }}
+.fga-header {{ display: flex; align-items: center; gap: 12px; position: relative; top: -6px; }}
 .fga-header img {{ height: 38px; width: auto; display: block; margin: 0; }}
 .fga-title {{ color: #ffffff; font-size: 1.5rem; font-weight: 700; line-height: 1.1; letter-spacing: .03em; }}
 .fga-tagline {{ color: {bronze}; letter-spacing: .18em; font-size: 11px; text-transform: uppercase; margin-top: 2px; }}
