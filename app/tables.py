@@ -24,6 +24,7 @@ SPECS: dict[str, type[BaseModel]] = {
     "tblTaxRate": m.TaxRateRow,
     "tblTaxRateLTCG": m.TaxRateLTCGRow,
     "tblUniformRMDFactors": m.UniformRMDFactorRow,
+    "tblRMDStartAge": m.RMDStartAgeRow,
     "tblStandDeductionBase": m.StandDeductionBaseRow,
     "tblAMT": m.AMTRow,
     "tblNIIT": m.NIITRow,
@@ -36,6 +37,7 @@ KEYS: dict[str, Callable] = {
     "tblTaxRate": lambda r: (r.Year, r.Bucket),
     "tblTaxRateLTCG": lambda r: (r.Year, r.Bucket),
     "tblUniformRMDFactors": lambda r: r.Age,
+    "tblRMDStartAge": lambda r: r.BirthYearFrom,
     "tblStandDeductionBase": lambda r: (r.FilingYear, r.Status),
     "tblAMT": lambda r: (r.Year, r.Status),
     "tblNIIT": lambda r: (r.Year, r.Status),
@@ -157,6 +159,11 @@ def load_all(data_dir: Path | str | None = None) -> Tables:
         missing = [f for f in fields if f not in m.FilerInputs.model_fields]
         if missing:
             errors.append(f"tblInputMap.csv: Field not on FilerInputs: {missing}")
+
+    if data["tblRMDStartAge"]:
+        starts = [r.BirthYearFrom for r in data["tblRMDStartAge"]]
+        if starts != sorted(starts) or starts[0] != 0:
+            errors.append("tblRMDStartAge.csv: BirthYearFrom must ascend and start at 0")
 
     if errors:
         raise TableValidationError(errors)

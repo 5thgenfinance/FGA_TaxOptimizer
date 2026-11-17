@@ -39,6 +39,11 @@ class UniformRMDFactorRow(_Row):
     LifeExpectancyFactor: Decimal = Field(gt=0)
 
 
+class RMDStartAgeRow(_Row):
+    BirthYearFrom: int = Field(ge=0, le=2200)
+    StartAge: int = Field(ge=50, le=100)
+
+
 class StandDeductionBaseRow(_Row):
     FilingYear: int = YearInt
     Status: FilingStatus
@@ -91,10 +96,14 @@ class InputMapRow(_Row):
 
 
 class FilerInputs(BaseModel):
-    """Editable scenario inputs (fields mirror tblInputMap.csv)."""
+    """Editable scenario inputs (fields mirror tblInputMap.csv).
+
+    ``schedule_a_salt`` is Optional because the workbook distinguishes a blank
+    cell (treated as the full SALT cap in the AMT addback) from an entered zero.
+    """
 
     tax_year: int
-    filing_status: FilingStatus
+    filing_status: str
     dob: date
     spouse_dob: Optional[date] = None
     prior_ye_ira_balance: Decimal = Decimal(0)
@@ -110,7 +119,7 @@ class FilerInputs(BaseModel):
     capital_loss_carryover: Decimal = Decimal(0)
     schedule_a_deductions: Decimal = Decimal(0)
     qualified_business_income: Decimal = Decimal(0)
-    schedule_a_salt: Decimal = Decimal(0)
+    schedule_a_salt: Optional[Decimal] = None
     amt_other_preferences: Decimal = Decimal(0)
     tax_withheld: Decimal = Decimal(0)
     additional_tax: Decimal = Decimal(0)
