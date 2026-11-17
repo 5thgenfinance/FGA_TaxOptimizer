@@ -1,22 +1,22 @@
-Order,Name,Cell,Type,Field
-1,inpTaxYear,H10,int,tax_year
-2,inpFilingStatus,C3,text,filing_status
-3,inpDateOfBirth,C4,date,dob
-4,inpSpouseDateOfBirth,E4,date,spouse_dob
-5,inpPriorYearEndIRABalance,C5,money,prior_ye_ira_balance
-6,inpSocialSecurityBenefits,C10,money,social_security_benefits
-7,inpIRAConversion,C11,money,ira_conversion
-8,inpQualifiedDividends,C12,money,qualified_dividends
-9,inpTaxableInterest,C13,money,taxable_interest
-10,inpOrdinaryDividends,C14,money,ordinary_dividends
-11,inpAdditionalIncome,C15,money,additional_income
-12,inpShortTermCapitalGainLoss,C16,money,short_term_gain_loss
-13,inpWagesAndTips,C17,money,wages_and_tips
-14,inpLongTermCapitalGains,C18,money,long_term_capital_gains
-15,inpCapitalLossCarryover,C19,money,capital_loss_carryover
-16,inpScheduleADeductions,C29,money,schedule_a_deductions
-17,inpQualifiedBusinessIncome,C30,money,qualified_business_income
-18,inpScheduleASALT,J35,money,schedule_a_salt
-19,inpAMTOtherPreferences,J38,money,amt_other_preferences
-20,inpTaxWithheld,C42,money,tax_withheld
-21,inpAdditionalTax,C43,money,additional_tax
+Order,Name,Cell,Type,Field,Label,Group
+1,inpTaxYear,H10,int,tax_year,Tax year,Filer
+2,inpFilingStatus,C3,text,filing_status,Filing status,Filer
+3,inpDateOfBirth,C4,date,dob,Date of birth,Filer
+4,inpSpouseDateOfBirth,E4,date,spouse_dob,Spouse date of birth (joint filers),Filer
+5,inpPriorYearEndIRABalance,C5,money,prior_ye_ira_balance,"IRA balance, prior year-end",Retirement
+6,inpSocialSecurityBenefits,C10,money,social_security_benefits,Social Security benefits,Retirement
+7,inpIRAConversion,C11,money,ira_conversion,IRA (Roth) conversion,Retirement
+8,inpQualifiedDividends,C12,money,qualified_dividends,Qualified dividends,Investments
+9,inpTaxableInterest,C13,money,taxable_interest,Taxable interest,Investments
+10,inpOrdinaryDividends,C14,money,ordinary_dividends,Ordinary dividends,Investments
+11,inpAdditionalIncome,C15,money,additional_income,Additional income (Schedule 1),Other income
+12,inpShortTermCapitalGainLoss,C16,money,short_term_gain_loss,Short-term capital gain/loss,Investments
+13,inpWagesAndTips,C17,money,wages_and_tips,Wages and tips,Other income
+14,inpLongTermCapitalGains,C18,money,long_term_capital_gains,Long-term capital gains,Investments
+15,inpCapitalLossCarryover,C19,money,capital_loss_carryover,Capital loss carryover,Investments
+16,inpScheduleADeductions,C29,money,schedule_a_deductions,Gifts and Schedule A deductions,Deductions
+17,inpQualifiedBusinessIncome,C30,money,qualified_business_income,Qualified business income,Deductions
+18,inpScheduleASALT,J35,money,schedule_a_salt,"Schedule A state, local and property taxes",AMT
+19,inpAMTOtherPreferences,J38,money,amt_other_preferences,AMT other preferences,AMT
+20,inpTaxWithheld,C42,money,tax_withheld,Tax withheld,Payments
+21,inpAdditionalTax,C43,money,additional_tax,Additional tax paid,Payments

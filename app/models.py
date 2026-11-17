@@ -7,15 +7,16 @@ from __future__ import annotations
 
 from datetime import date
 from decimal import Decimal
-from typing import Literal, Optional
+from typing import Annotated, Literal, Optional
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_validator
 
 FilingStatus = Literal["Single", "Jointly", "Separate"]
 InputType = Literal["int", "text", "date", "money"]
 YearInt = Field(ge=1900, le=2200)
 Money = Field(ge=0)
 Rate = Field(ge=0, le=1)
+NonEmpty = Annotated[str, StringConstraints(min_length=1)]
 
 
 class _Row(BaseModel):
@@ -93,6 +94,8 @@ class InputMapRow(_Row):
     Cell: str = Field(pattern=r"^[A-Z]{1,3}[0-9]{1,5}$")
     Type: InputType
     Field: str = Field(pattern=r"^[a-z][a-z0-9_]*$")
+    Label: NonEmpty
+    Group: NonEmpty
 
 
 class FilerInputs(BaseModel):
