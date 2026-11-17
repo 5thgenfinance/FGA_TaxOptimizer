@@ -141,9 +141,32 @@ def _input_sections(tables) -> None:
                 _render_field(row, tables)
 
 
-def _kpi_row(items: list[tuple[str, str]]) -> None:
-    for column, (label, value) in zip(st.columns(len(items)), items):
-        column.metric(label, value)
+def _kpi_row(items: list[tuple]) -> None:
+    """One row of metrics. Each item is (label, value) or (label, value, tooltip)."""
+    for column, (label, value, *tip) in zip(st.columns(len(items)), items):
+        column.metric(label, value, help=tip[0] if tip else None)
+
+
+def _planning_row(result, inputs) -> None:
+    """Room left in the 0% capital gains bracket and before Schedule A beats the standard deduction."""
+    room, zero_top = report.zero_ltcg_room(result)
+    if zero_top is None:
+        zero_tip = "The 0% long-term capital gains bracket was not found in the tax tables."
+    else:
+        zero_tip = (
+            f"Long-term capital gains you could still realize at the 0% rate. The 0% bracket ends at "
+            f"{report.fmt_money(zero_top)} of taxable income for {result.filing_status} in {result.tax_year}; "
+            "this is that amount less your taxable ordinary income and the gains already in the bracket. "
+            "Realizing more gains also raises AGI, which can increase taxable Social Security and NIIT; "
+            "this figure does not allow for that.")
+    gap_tip = (
+        "More Schedule A deductions (gifts, medical, taxes) you could add before itemizing beats the standard "
+        f"deduction of {report.fmt_money(result.standard_deduction)}. Until they do, extra itemized deductions "
+        "do not lower regular tax. Itemized deductions are counted up to the AGI limit.")
+    _kpi_row([
+        ("Additional LTCG at 0%", "n/a" if room is None else report.fmt_money(room), zero_tip),
+        ("Left before Schedule A", report.fmt_money(report.itemizing_gap(result, inputs)), gap_tip),
+    ])
 
 
 def _results_tab(tables) -> None:
@@ -168,6 +191,7 @@ def _results_tab(tables) -> None:
         ("Required minimum distribution", report.fmt_money(result.rmd)),
         ("Standard deduction", report.fmt_money(result.standard_deduction)),
     ])
+    _planning_row(result, inputs)
     for warning in result.warnings:
         st.warning(warning)
 

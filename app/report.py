@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from app.calc.engine import TaxResult
+    from app.models import FilerInputs
 
 
 def fmt_money(value: Decimal) -> str:
@@ -27,6 +28,34 @@ def marginal_ordinary_rate(result: TaxResult) -> Decimal | None:
         if allocation.amount > 0:
             return allocation.bracket.rate
     return None
+
+
+def zero_ltcg_room(result: TaxResult) -> tuple[Decimal | None, Decimal | None]:
+    """(more long-term gains that still fit in the 0% bracket, top of the 0% bracket).
+
+    Gains stack on top of taxable ordinary income, so the room is the 0% ceiling less the taxable
+    ordinary income and less the gains already placed in that bracket. Both values are None when
+    the tables have no finite 0% bracket.
+    """
+    for allocation in result.ltcg_allocations:
+        bracket = allocation.bracket
+        if bracket.rate == 0:
+            if bracket.unbounded:
+                return None, None
+            room = bracket.limit - max(result.taxable_ordinary, Decimal(0)) - allocation.amount
+            return max(room, Decimal(0)), bracket.limit
+    return None, None
+
+
+def itemizing_gap(result: TaxResult, inputs: FilerInputs) -> Decimal:
+    """More Schedule A deductions that fit before itemizing beats the standard deduction.
+
+    Mirrors the engine: itemized = Schedule A + qualified business income, limited to the AGI cash
+    limit, and compared with the standard deduction. Zero once itemizing already wins.
+    """
+    itemized = Decimal(str(inputs.schedule_a_deductions or 0)) + Decimal(str(inputs.qualified_business_income or 0))
+    counted = min(itemized, result.cash_deduction_limit)
+    return max(result.standard_deduction - counted, Decimal(0))
 
 
 def sections(r: TaxResult) -> list[tuple[str, list[tuple[str, str]]]]:

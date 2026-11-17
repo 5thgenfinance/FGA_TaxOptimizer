@@ -7,6 +7,8 @@ The Excel workbook keeps its own scheme (YYYY.MAJOR.MINOR, currently 2026.3.0). 
 Versions 0.0.1 to 0.4.0 are labels applied afterwards to the phases in PROJECT_PLAN.md; their dates are the dates the phases were committed.
 
 ## [Unreleased]
+### Added
+- Results: two new figures under the headline rows. 'Additional LTCG at 0%' is the long-term capital gains you could still realize in the 0% bracket (the 0% ceiling less taxable ordinary income and the gains already in it). 'Left before Schedule A' is how much more Schedule A deductions fit before itemizing beats the standard deduction. Each has a tooltip.
 
 ## [0.5.0] - 2026-11-17
 ### Added
