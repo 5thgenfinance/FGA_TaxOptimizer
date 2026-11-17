@@ -2,16 +2,22 @@
 from __future__ import annotations
 
 from datetime import date
+from html import escape
 
 import streamlit as st
 
-from app import form_state, pdf_report, report, scenario_io, scenario_store
+from app import branding, form_state, pdf_report, report, scenario_io, scenario_store
 from app.calc.common import CalcError
 from app.calc.engine import compute
 from app.display import display_records
 from app.tables import SPECS, TableValidationError, load_all
 
-st.set_page_config(page_title="FGA Tax Optimizer", layout="wide")
+APP_TITLE = "Fifth Generation Tax Optimizer"
+BRAND = branding.load_brand()
+FAVICON = branding.asset("favicon.png")
+
+st.set_page_config(page_title=APP_TITLE, page_icon=str(FAVICON) if FAVICON.is_file() else None,
+                   layout="wide", initial_sidebar_state="expanded")
 
 
 @st.cache_resource(show_spinner=False)
@@ -21,6 +27,15 @@ def _load():
         return load_all(), []
     except TableValidationError as exc:
         return None, exc.errors
+
+
+def _apply_branding() -> None:
+    st.markdown(f"<style>{branding.css(BRAND)}</style>", unsafe_allow_html=True)
+    ribbon = branding.logo_file(BRAND, "ribbon_light")
+    shield = branding.logo_file(BRAND, "shield_light")
+    if ribbon:
+        st.logo(str(ribbon), icon_image=str(shield) if shield else None, size="large")
+    st.markdown(branding.header_html(BRAND, APP_TITLE), unsafe_allow_html=True)
 
 
 def _handle_import(raw: bytes, tables) -> None:
@@ -42,7 +57,7 @@ def _handle_import(raw: bytes, tables) -> None:
 
 def _saved_scenarios(tables, payload: str | None) -> None:
     store = scenario_store.default_store()
-    st.subheader("Saved scenarios")
+    st.markdown("**Saved scenarios**")
     st.caption("Stored on the server that runs this app. On Streamlit Community Cloud they are lost "
                "when the app restarts, so keep an exported copy of anything important.")
     if st.button("Save current scenario", disabled=payload is None):
@@ -77,9 +92,10 @@ def _saved_scenarios(tables, payload: str | None) -> None:
             st.rerun()
 
 
-def _sidebar(tables) -> None:
-    with st.sidebar:
-        st.header("Scenario")
+def _scenario_tools(tables) -> None:
+    """Import, export, saved scenarios and options. Runs before the input widgets are
+    created so that an import can set their values."""
+    with st.expander("Scenario: import, export, save"):
         uploaded = st.file_uploader("Import scenario (JSON)", type="json", key="scenario_upload")
         if uploaded is not None:
             token = (uploaded.name, uploaded.size)
@@ -101,10 +117,9 @@ def _sidebar(tables) -> None:
                 file_name=scenario_io.safe_filename(st.session_state["report_title"]),
                 mime="application/json",
             )
-
         _saved_scenarios(tables, payload)
 
-        st.header("Options")
+    with st.expander("Options"):
         st.checkbox("Reproduce workbook (legacy mode)", key="legacy_mode",
                     help="Matches the Excel workbook's quirks instead of applying the planned fixes.")
         if st.button("Reload tables"):
@@ -135,13 +150,17 @@ def _render_field(row, tables) -> None:
         _value_widget(row, key)
 
 
-def _inputs_tab(tables) -> None:
-    for group, rows in form_state.groups(tables):
-        st.subheader(group)
-        columns = st.columns(3)
-        for index, row in enumerate(rows):
-            with columns[index % 3]:
+def _input_sections(tables) -> None:
+    """One collapsible container per tblInputMap group; the first group starts open."""
+    for index, (group, rows) in enumerate(form_state.groups(tables)):
+        with st.expander(group, expanded=index == 0):
+            for row in rows:
                 _render_field(row, tables)
+
+
+def _kpi_row(items: list[tuple[str, str]]) -> None:
+    for column, (label, value) in zip(st.columns(len(items)), items):
+        column.metric(label, value)
 
 
 def _results_tab(tables) -> None:
@@ -152,19 +171,26 @@ def _results_tab(tables) -> None:
         st.error(f"Cannot calculate: {exc}")
         return
 
-    title = st.session_state["report_title"]
-    st.subheader(title)
-    st.caption(f"Tax year {result.tax_year}, {result.filing_status} | "
-               f"Scenario last updated {st.session_state['last_updated']}"
-               + (" | Legacy mode" if result.legacy else ""))
-    col1, col2, col3 = st.columns(3)
-    col1.metric("Total tax", report.fmt_money(result.total_tax))
-    col2.metric(report.due_label(result), report.fmt_money(abs(result.due_or_refund)))
-    col3.metric("Effective rate (of AGI)", report.fmt_rate(result.effective_rate))
+    if result.legacy:
+        st.caption("Legacy mode: reproducing the Excel workbook.")
+    _kpi_row([
+        ("Total tax", report.fmt_money(result.total_tax)),
+        (report.due_label(result), report.fmt_money(abs(result.due_or_refund))),
+        ("Effective rate (of AGI)", report.fmt_rate(result.effective_rate)),
+        ("Marginal ordinary rate", report.fmt_rate(report.marginal_ordinary_rate(result), 0)),
+    ])
+    _kpi_row([
+        ("Adjusted gross income", report.fmt_money(result.agi)),
+        ("Taxable ordinary income", report.fmt_money(result.taxable_ordinary)),
+        ("Required minimum distribution", report.fmt_money(result.rmd)),
+        ("Standard deduction", report.fmt_money(result.standard_deduction)),
+    ])
     for warning in result.warnings:
         st.warning(warning)
 
-    pdf = pdf_report.build_pdf(result, inputs, tables, title, st.session_state["last_updated"])
+    title = st.session_state["report_title"]
+    pdf = pdf_report.build_pdf(result, inputs, tables, title, st.session_state["last_updated"],
+                               logo=branding.asset("ribbon_white.jpg"))
     st.download_button("Download PDF report", pdf, file_name=pdf_report.pdf_filename(title),
                        mime="application/pdf")
 
@@ -197,7 +223,7 @@ def _tables_tab(tables) -> None:
 
 def main() -> None:
     tables, errors = _load()
-    st.title("FGA Tax Optimizer")
+    _apply_branding()
 
     if errors:
         st.error("Table validation failed. Fix the CSV files in data/ and reload.")
@@ -209,12 +235,24 @@ def main() -> None:
         return
 
     form_state.init_state(st.session_state, tables)
-    _sidebar(tables)
-    st.text_input("Report title", key="report_title")
 
-    inputs_tab, results_tab, tables_tab, status_tab = st.tabs(["Inputs", "Results", "Tables", "Status"])
-    with inputs_tab:
-        _inputs_tab(tables)
+    with st.sidebar:
+        st.markdown('<div class="fga-side-title">Inputs</div>', unsafe_allow_html=True)
+        inputs_box = st.container()
+        tools_box = st.container()
+    with tools_box:          # first, so an import can set the input widgets' values
+        _scenario_tools(tables)
+    with inputs_box:
+        _input_sections(tables)
+
+    st.text_input("Report title", key="report_title", label_visibility="collapsed",
+                  placeholder="Add a client name")
+    year = escape(str(st.session_state["in_tax_year"]))
+    updated = escape(branding.format_updated(st.session_state["last_updated"]))
+    st.markdown(f'<div class="fga-meta">Tax year {year} &nbsp;|&nbsp; Last updated {updated}</div>',
+                unsafe_allow_html=True)
+
+    results_tab, tables_tab, status_tab = st.tabs(["Results", "Tables", "Status"])
     with results_tab:
         _results_tab(tables)
     with tables_tab:

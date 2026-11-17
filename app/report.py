@@ -2,8 +2,10 @@
 from __future__ import annotations
 
 from decimal import Decimal
+from typing import TYPE_CHECKING
 
-from app.calc.engine import TaxResult
+if TYPE_CHECKING:
+    from app.calc.engine import TaxResult
 
 
 def fmt_money(value: Decimal) -> str:
@@ -17,6 +19,14 @@ def fmt_rate(value: Decimal | None, places: int = 2) -> str:
 
 def due_label(result: TaxResult) -> str:
     return "Refund" if result.due_or_refund < 0 else "Amount due"
+
+
+def marginal_ordinary_rate(result: TaxResult) -> Decimal | None:
+    """Rate of the highest ordinary bracket that holds any income (None if there is none)."""
+    for allocation in reversed(result.ordinary_allocations):
+        if allocation.amount > 0:
+            return allocation.bracket.rate
+    return None
 
 
 def sections(r: TaxResult) -> list[tuple[str, list[tuple[str, str]]]]:

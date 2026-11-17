@@ -5,29 +5,48 @@ from datetime import datetime
 from decimal import Decimal
 from io import BytesIO
 from pathlib import Path
+from typing import TYPE_CHECKING
 from xml.sax.saxutils import escape
 
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import letter
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import inch
-from reportlab.platypus import KeepTogether, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+from reportlab.lib.utils import ImageReader
+from reportlab.platypus import Image, KeepTogether, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
 from app import report, scenario_io
-from app.calc.engine import TaxResult
-from app.models import FilerInputs
-from app.tables import Tables
+
+if TYPE_CHECKING:
+    from app.calc.engine import TaxResult
+    from app.models import FilerInputs
+    from app.tables import Tables
 
 DISCLAIMER = (
     "This estimate is for planning purposes only. It uses the tax tables loaded in the "
     "application and simplified calculations, and is not tax, legal or investment advice."
 )
 NAVY = colors.HexColor("#1F3A5F")
+BRONZE = colors.HexColor("#C49A4A")
 LIGHT = colors.HexColor("#EEF2F7")
+SERIF = "Times-Bold"
 
 
 def pdf_filename(title: str) -> str:
     return Path(scenario_io.safe_filename(title)).stem + ".pdf"
+
+
+def logo_flowable(path, width: float):
+    """A proportionally scaled logo image, or None if the file is missing or unreadable."""
+    if not path or not Path(path).is_file():
+        return None
+    try:
+        pixel_width, pixel_height = ImageReader(str(path)).getSize()
+    except Exception:  # an unreadable image must not break the report
+        return None
+    image = Image(str(path), width=width, height=width * pixel_height / pixel_width)
+    image.hAlign = "LEFT"
+    return image
 
 
 def input_value(row, value) -> str:
@@ -53,9 +72,11 @@ def input_groups(inputs: FilerInputs, tables: Tables) -> list[tuple[str, list[tu
 def _styles():
     base = getSampleStyleSheet()
     return {
-        "title": ParagraphStyle("title", parent=base["Title"], textColor=NAVY, fontSize=20, leading=24, alignment=0),
+        "title": ParagraphStyle("title", parent=base["Title"], fontName=SERIF, textColor=NAVY,
+                                fontSize=20, leading=24, alignment=0),
         "sub": ParagraphStyle("sub", parent=base["Normal"], textColor=colors.HexColor("#555555"), fontSize=9, leading=12),
-        "h2": ParagraphStyle("h2", parent=base["Heading2"], textColor=NAVY, fontSize=12, spaceBefore=10, spaceAfter=4),
+        "h2": ParagraphStyle("h2", parent=base["Heading2"], fontName=SERIF, textColor=NAVY, fontSize=12,
+                             spaceBefore=10, spaceAfter=4),
         "body": ParagraphStyle("body", parent=base["Normal"], fontSize=9, leading=12),
         "warn": ParagraphStyle("warn", parent=base["Normal"], fontSize=9, leading=12, textColor=colors.HexColor("#8A4B00"),
                                backColor=colors.HexColor("#FFF4E0"), borderPadding=4, spaceAfter=4),
@@ -89,15 +110,22 @@ def _bracket_table(allocations) -> Table:
 
 
 def build_pdf(result: TaxResult, inputs: FilerInputs, tables: Tables, title: str,
-              last_updated: str, now: datetime | None = None) -> bytes:
-    """Render the scenario inputs and results as a PDF and return its bytes."""
+              last_updated: str, now: datetime | None = None, logo=None) -> bytes:
+    """Render the scenario inputs and results as a PDF and return its bytes.
+
+    ``logo`` is an optional image file (for example a brand ribbon on a white background).
+    """
     title = (title or "").strip() or scenario_io.DEFAULT_TITLE
     generated = (now or datetime.now()).strftime("%Y-%m-%d %H:%M")
     st = _styles()
     width = 7.0 * inch
     label_w = 4.9 * inch
 
-    story = [
+    story = []
+    brand_logo = logo_flowable(logo, 2.2 * inch)
+    if brand_logo is not None:
+        story += [brand_logo, Spacer(1, 8)]
+    story += [
         Paragraph(escape(title), st["title"]),
         Paragraph(escape(f"Tax year {result.tax_year} | {result.filing_status}"
                          + (" | Workbook (legacy) mode" if result.legacy else "")), st["sub"]),
@@ -114,8 +142,9 @@ def build_pdf(result: TaxResult, inputs: FilerInputs, tables: Tables, title: str
     head.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, 0), NAVY), ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
         ("FONTSIZE", (0, 0), (-1, 0), 8), ("FONTSIZE", (0, 1), (-1, 1), 16),
-        ("FONTNAME", (0, 1), (-1, 1), "Helvetica-Bold"), ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+        ("FONTNAME", (0, 1), (-1, 1), SERIF), ("ALIGN", (0, 0), (-1, -1), "CENTER"),
         ("BACKGROUND", (0, 1), (-1, 1), LIGHT), ("TOPPADDING", (0, 1), (-1, 1), 8), ("BOTTOMPADDING", (0, 1), (-1, 1), 8),
+        ("LINEBELOW", (0, 1), (-1, 1), 1.5, BRONZE),
     ]))
     story += [head, Spacer(1, 6)]
 
@@ -141,6 +170,9 @@ def build_pdf(result: TaxResult, inputs: FilerInputs, tables: Tables, title: str
 
     def footer(canvas, doc):
         canvas.saveState()
+        canvas.setStrokeColor(BRONZE)
+        canvas.setLineWidth(0.75)
+        canvas.line(0.75 * inch, 0.65 * inch, letter[0] - 0.75 * inch, 0.65 * inch)
         canvas.setFont("Helvetica", 7.5)
         canvas.setFillColor(colors.HexColor("#666666"))
         canvas.drawString(0.75 * inch, 0.5 * inch, title[:90])
