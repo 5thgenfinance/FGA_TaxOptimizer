@@ -1,10 +1,10 @@
-# TaxRetirementOptimizer → Python Web App
+# TaxRetirementOptimizer → Python Web App (Streamlit)
 Source: TaxRetirementOptimizer.xlsx v2026.3.0 + TaxRetirementOptimizer-Specification.md
 Owner: Robert Maxwell
 
 ## 1. Goals and non-goals
 **Goals**
-- Reproduce the `TaxSheetSingle` estimate (ordinary tax, LTCG, NIIT, AMT, RMD, taxable Social Security, standard deduction, due/refund) as a web app.
+- Reproduce the `TaxSheetSingle` estimate (ordinary tax, LTCG, NIIT, AMT, RMD, taxable Social Security, standard deduction, due/refund) as a Streamlit web app hosted on Streamlit Community Cloud.
 - All tax-table data lives in external CSV files in `data/`. No table values are embedded in code.
 - The 17 named LAMBDAs become pure Python functions with unit tests.
 - The workbook's current outputs become the golden regression test.
@@ -17,17 +17,19 @@ Owner: Robert Maxwell
 ## 2. Stack
 | Layer | Choice | Reason |
 |---|---|---|
-| Web | FastAPI + Jinja2 + HTMX | Server-rendered form, live recalculation, minimal JS |
+| Web | Streamlit (Community Cloud) | Deploys straight from GitHub, no server to manage |
 | Validation | Pydantic v2 | Typed input and CSV-row models |
 | Math | `decimal.Decimal` for money, `Decimal` rates | Avoid float drift |
-| Data | CSV via stdlib `csv` (or pandas) | Tables stay editable in Excel |
+| Data | CSV via stdlib `csv` | Tables stay editable in Excel |
 | Excel bridge | xlwings (Python) | Reads/writes the named input cells and exchanges scenario JSON; no VBA |
-| Tests | pytest + hypothesis | Golden case, edge cases, property tests |
-| Packaging | uv/pip, Dockerfile | Local and hosted deploy |
+| Tests | pytest + hypothesis (+ Streamlit AppTest) | Golden case, edge cases, property tests, UI smoke test |
+| Packaging | `requirements.txt` for hosting, `pyproject.toml` for dev | Community Cloud installs from `requirements.txt` |
 
 ## 3. Repository layout
 ```
-taxopt/
+├─ streamlit_app.py              # Streamlit entry point (Community Cloud main file)
+├─ requirements.txt              # hosting dependencies (pydantic, streamlit)
+├─ pyproject.toml                # dev install and extras
 ├─ data/                         # EXTERNAL TABLES (edit without touching code)
 │  ├─ tblTaxRate.csv
 │  ├─ tblTaxRateLTCG.csv
@@ -35,173 +37,62 @@ taxopt/
 │  ├─ tblStandDeductionBase.csv
 │  ├─ tblAMT.csv
 │  ├─ tblNIIT.csv
-│  ├─ tblStatusAliases.csv       # NEW: status normalization
-│  ├─ tblParameters.csv          # NEW: constants hard-coded in LAMBDAs
-│  └─ tblInputMap.csv            # NEW: ordered input names, cells, types, fields
+│  ├─ tblStatusAliases.csv       # status normalization
+│  ├─ tblParameters.csv          # constants hard-coded in the LAMBDAs
+│  └─ tblInputMap.csv            # ordered input names, cells, types, fields
 ├─ app/
-│  ├─ main.py                    # FastAPI routes
 │  ├─ config.py                  # DATA_DIR, env settings
-│  ├─ models.py                  # Pydantic: FilerInputs, TaxResult, table rows
-│  ├─ tables.py                  # CSV loader + validators + lookups (cached)
-│  ├─ scenario_io.py             # NEW: ScenarioFile model, JSON import/export
-│  ├─ status.py                  # normalize_status()
-│  ├─ calc/
-│  │  ├─ ordinary.py             # IncomeTax, TaxRate bracket allocation
-│  │  ├─ ltcg.py                 # LTCGTax, LTCG_Bucket_Amount, LTCG_Rate
-│  │  ├─ rmd.py
-│  │  ├─ deductions.py           # StandardDeduction_Basic/Full
-│  │  ├─ socialsec.py            # SS_Taxable
-│  │  ├─ niit.py
-│  │  ├─ amt.py
-│  │  └─ engine.py               # orchestrates TaxSheetSingle logic
-│  ├─ templates/ (base.html, form.html, results.html, tables.html)
-│  └─ static/
+│  ├─ models.py                  # Pydantic: row models, FilerInputs
+│  ├─ tables.py                  # CSV loader + validators + lookups
+│  ├─ display.py                 # table display helpers (no Streamlit import)
+│  ├─ scenario_io.py             # Phase 2: ScenarioFile model, JSON import/export
+│  ├─ status.py                  # Phase 1: normalize_status()
+│  └─ calc/                      # Phase 1
+│     ├─ ordinary.py             # IncomeTax, TaxRate bracket allocation
+│     ├─ ltcg.py                 # LTCGTax, LTCG_Bucket_Amount, LTCG_Rate
+│     ├─ rmd.py
+│     ├─ deductions.py           # StandardDeduction_Basic/Full
+│     ├─ socialsec.py            # SS_Taxable
+│     ├─ niit.py
+│     ├─ amt.py
+│     └─ engine.py               # orchestrates TaxSheetSingle logic
 ├─ excel/
-│  └─ scenario_xlwings.py        # NEW: Excel <-> scenario JSON via xlwings
+│  └─ scenario_xlwings.py        # Excel <-> scenario JSON via xlwings
+├─ scripts/validate_tables.py    # CLI check, also run in CI
 ├─ tests/
-│  ├─ test_tables.py, test_rmd.py, test_ordinary.py, test_ltcg.py,
-│  │  test_amt.py, test_niit.py, test_socialsec.py, test_deductions.py
-│  ├─ test_scenario_io.py
-│  └─ test_golden_workbook.py
-├─ scripts/validate_tables.py    # CLI check before deploy
-├─ pyproject.toml
-├─ Dockerfile
-└─ README.md
+│  ├─ test_tables.py, test_display.py, test_streamlit_app.py   # exist
+│  ├─ test_rmd.py, test_ordinary.py, test_ltcg.py, test_amt.py,
+│  │  test_niit.py, test_socialsec.py, test_deductions.py       # Phase 1
+│  ├─ test_scenario_io.py                                      # Phase 2
+│  └─ test_golden_workbook.py                                  # Phase 1
+└─ .github/workflows/ci.yml
 ```
 
 ## 4. External CSV tables
-Rule: file name = Excel table name, and the column headers are kept verbatim. This includes `FilingYear` in `tblStandDeductionBase`, which is not `Year`. Values below are the workbook contents.
+The CSV files in `data/` are the source of truth. This plan no longer copies their contents, so there is only one version to maintain.
 
-**data/tblTaxRate.csv**
-```csv
-Year,Bucket,Single,Jointly,Rate
-2026,1,12400,24800,0.10
-2026,2,50400,100800,0.12
-2026,3,105700,211400,0.22
-2026,4,201775,403550,0.24
-2026,5,256225,512450,0.32
-2026,6,640600,768700,0.35
-2025,1,11925,23850,0.10
-2025,2,48475,96950,0.12
-2025,3,103350,206700,0.22
-2025,4,197300,394600,0.24
-2025,5,250525,501050,0.32
-2025,6,626350,751600,0.35
-2025,7,9999999,9999999,0.37
-```
+Rule: file name = Excel table name, and the column headers are kept verbatim. This includes `FilingYear` in `tblStandDeductionBase`, which is not `Year`. Values were copied from the workbook.
 
-**data/tblTaxRateLTCG.csv**
-```csv
-Year,Bucket,Single,Jointly,Rate
-2026,1,49450,98900,0
-2026,2,545500,613700,0.15
-2026,3,999999999,99999999,0.20
-2025,1,48350,96700,0
-2025,2,533400,600050,0.15
-2025,3,9999999,9999999,0.20
-```
-
-**data/tblStandDeductionBase.csv**
-```csv
-FilingYear,Status,Amount
-2026,Single,16100
-2026,Jointly,32200
-2025,Single,15750
-2025,Jointly,31500
-```
-
-**data/tblAMT.csv**
-```csv
-Year,Status,Exemption,Start,End,Breakpoint,Lower,Upper,SaltCap
-2026,Single,90100,500000,680200,244500,0.26,0.28,40400
-2026,Jointly,140200,1000000,1280400,244500,0.26,0.28,40400
-2026,Separate,70100,500000,610200,122250,0.26,0.28,20200
-```
-
-**data/tblNIIT.csv**
-```csv
-Year,Status,Threshold
-2026,Single,200000
-2026,Jointly,250000
-2026,Separate,125000
-```
-
-**data/tblUniformRMDFactors.csv**
-```csv
-Age,LifeExpectancyFactor
-73,26.5
-74,25.5
-75,24.6
-76,23.7
-77,22.9
-78,22
-79,21.1
-80,20.2
-81,19.4
-82,18.5
-83,17.7
-84,16.8
-85,16
-86,15.2
-87,14.4
-88,13.7
-89,12.9
-90,12.2
-91,11.5
-92,10.8
-93,10.1
-94,9.5
-95,8.9
-96,8.4
-97,7.8
-98,7.3
-99,6.8
-100,6.4
-```
-Phase 1 loads this table exactly as it stands (ages 73–100). The RMDOLD factors, which cover 72–120 per spec §6.6, are only a reference for a later extension. Verify them against the IRS table before use.
-
-**data/tblStatusAliases.csv** (new; replaces the inconsistent string checks in the LAMBDAs)
-```csv
-Alias,Canonical
-single,Single
-s,Single
-jointly,Jointly
-mfj,Jointly
-married filing jointly,Jointly
-separate,Separate
-mfs,Separate
-married filing separately,Separate
-```
-
-**data/tblParameters.csv** (new; constants hard-coded in the LAMBDAs, so they move out of code too)
-```csv
-Year,Key,Single,Jointly,Separate
-2026,SS_Base1,25000,32000,25000
-2026,SS_Base2,34000,44000,34000
-2026,AgeAddOn65,2050,1650,1650
-2026,SeniorBonusPerPerson,6000,6000,6000
-2026,SeniorBonusPhaseoutStart,75000,150000,75000
-2026,SeniorBonusPhaseoutRate,0.06,0.06,0.06
-2026,NIIT_Rate,0.038,0.038,0.038
-2026,AMT_LTCG_FlatRate,0.15,0.15,0.15
-2026,MedicalAGIFloor,0.075,0.075,0.075
-2026,CashDeductionAGILimit,0.60,0.60,0.60
-```
-Open item: Separate-status values in `tblParameters.csv` are placeholders. The workbook only states Single and Jointly (or MFS-lived-apart for SS), so confirm them.
-
-**data/tblInputMap.csv** (new; defined in section 12.3)
+Notes on specific tables:
+- `tblUniformRMDFactors.csv` covers ages 73–100, exactly as in the workbook. The RMDOLD factors (72–120, spec §6.6) are only a reference for a later extension. Verify them against the IRS table before use.
+- `tblStatusAliases.csv` is new. It replaces the inconsistent status string checks in the LAMBDAs.
+- `tblParameters.csv` is new. It holds constants that the LAMBDAs hard-code (Social Security bases, age add-ons, senior bonus, NIIT rate, AMT flat LTCG rate, deduction limits). The Separate-status column is a placeholder; confirm it.
+- `tblInputMap.csv` is new and is described in section 12.3.
 
 ### 4.1 Loader and validation rules (`tables.py`)
-- Load once at startup, cache, and expose `reload_tables()` (admin endpoint) so a CSV edit doesn't need a redeploy.
-- Validate each file against a Pydantic row model. The checks below come from spec §3:
-  - Keys are unique: `(Year,Bucket)`, `Age`, `(FilingYear,Status)`, `(Year,Status)`.
-  - Bucket limits ascend within each year and status.
-  - Rates are in 0–1.
-  - `AMT.End > Start`, and money fields are ≥ 0.
-- Treat the sentinel ceilings (9999999, 99999999, 999999999) as data. Detect them with a `>= 9_999_999` rule and render them as "no limit" in the UI, never as statutory thresholds.
-- Fail startup with a clear report if any file is invalid or missing.
-- Provide `tables.supported_years()`, the intersection of years across all tables a calculation needs, so the UI only offers valid years.
-- Add `scripts/validate_tables.py` as a CI step.
+- Load once and cache. `reload_tables()` clears the cache. In Streamlit this is the sidebar "Reload tables" button; pushing to GitHub also redeploys the app.
+- Each file is validated against a Pydantic row model with exact header matching. Checks:
+  - Keys are unique: `(Year,Bucket)`, `Age`, `(FilingYear,Status)`, `(Year,Status)`, `Alias`, `(Year,Key)`, `Name`.
+  - Bucket numbers run 1..n in file order, and bucket limits ascend within each year and status.
+  - Rates are in 0–1, and money fields are ≥ 0.
+  - `AMT.End > Start`.
+  - RMD ages are contiguous.
+  - Every `tblInputMap` field exists on `FilerInputs`, and `Order` and `Field` are unique.
+- Sentinel ceilings (≥ 9,999,999) are data. `is_unbounded()` detects them, and the UI shows them as "No limit", never as statutory thresholds.
+- A top bracket that is not a sentinel produces a warning (currently the 2026 ordinary table).
+- Validation errors raise `TableValidationError`. The Streamlit app shows the errors on the Status tab instead of crashing.
+- `supported_years()` returns the years present in every table a calculation needs (currently 2026 only).
+- `scripts/validate_tables.py` runs the same checks in CI.
 
 ## 5. Function mapping (Excel → Python)
 | Excel | Python module.function | Table / params used |
@@ -218,7 +109,7 @@ Open item: Separate-status values in `tblParameters.csv` are placeholders. The w
 | `AMT_ExemptionRate`, `AMT_Exemption`, `AMT_Tax`, `AMT_Owed` | `amt.*` | tblAMT |
 | Sheet formulas C6…M43 | `engine.compute(inputs) -> TaxResult` | all |
 
-Excel named cells map to `FilerInputs` fields through `data/tblInputMap.csv` (section 12.3): `inpFilingStatus`, `inpDateOfBirth`, `inpTaxYear`, `inpPriorYearEndIRABalance`, `inpWagesAndTips`, and so on.
+Excel named cells map to `FilerInputs` fields through `data/tblInputMap.csv` (section 12.3).
 
 ### 5.1 Calculation order in `engine.compute` (from spec §5.2)
 1. RMD (`C6`). The distribution income is `C9 = C6`.
@@ -235,15 +126,26 @@ Excel named cells map to `FilerInputs` fields through `data/tblInputMap.csv` (se
 
 `TaxResult` returns every intermediate (bracket table, per-bucket tax, AMT steps) so the UI can show a line-by-line breakdown matching the sheet.
 
-## 6. Web app
-- `GET /`: input form (status, DOB, spouse DOB, year dropdown from `supported_years()`, all income, deduction and credit fields, report title).
-- `POST /calculate`: HTMX partial. It re-renders the results panel on every field change.
-- `GET /tables`: read-only view of each loaded CSV, with years and sources.
-- `POST /admin/reload`: reload CSVs (protect with a token).
-- `GET /api/calculate` (JSON): the same engine, for future integration with your RIA tools.
-- Scenario import/export endpoints and buttons: see section 12.
-- Display rules: currency `$#,##0`, rates `0%`, and sentinel limits shown as "No limit".
-- Optional later: PDF/Excel export of the result, branded client report, saved scenarios (SQLite).
+## 6. Web app (Streamlit)
+Entry point: `streamlit_app.py`. Streamlit reruns the script on each interaction, so inputs live in `st.session_state` and the engine is a pure function.
+
+Current skeleton (Phase 0):
+- Report title field at the top.
+- Sidebar "Reload tables" button (clears the cached tables and reruns).
+- Status tab: validation result, table count, supported years, warnings (or the list of validation errors).
+- Tables tab: select a table and view it with `st.dataframe`; sentinel limits show as "No limit".
+- Scenario tab: placeholder plus the 21 fields defined in `tblInputMap.csv`.
+
+Phase 2 additions:
+- Inputs form built from `tblInputMap.csv` (year dropdown from `supported_years()`, filing status, DOBs, income, deductions, credits).
+- Results panel with the line-by-line breakdown from `TaxResult`, headed by the report title and last-updated date.
+- Scenario export: `st.download_button` serving the JSON file (stamps `lastUpdated`).
+- Scenario import: `st.file_uploader` accepting the JSON, validating it with `scenario_io.py`, loading values into `st.session_state`, and listing warnings.
+- Display rules: currency `$#,##0`, rates `0%`, sentinel limits "No limit".
+
+Not in scope for Streamlit: REST endpoints (`/api/...`), a token-protected admin reload, and a separate JSON API. If an API is needed later, `engine.compute` can be wrapped in FastAPI without changing the calculation code.
+
+Optional later: PDF export of the result, branded client report, saved scenarios (needs external storage; see section 13).
 
 ## 7. Known workbook defects: decide on each
 These come from spec §8. The workbook's behavior and the intended behavior differ in several places.
@@ -256,7 +158,7 @@ These come from spec §8. The workbook's behavior and the intended behavior diff
 | 4 | Std-deduction add-ons use `TODAY()` year | Use the selected tax year and `tblParameters` |
 | 5 | Status coverage inconsistent (`Separate` missing in ordinary/LTCG/deduction tables) | Alias table now. Add Separate rows to the other tables, or restrict the UI to Single/Jointly. |
 | 6 | SS provisional income excludes the RMD, with no tax-exempt-interest input | Add a tax-exempt-interest input. Confirm whether to include the RMD (spec §8.1 #7). |
-| 7 | AMT uses flat 15% on LTCG | Phase 2: stacked 0/15/20% |
+| 7 | AMT uses flat 15% on LTCG | Phase 3: stacked 0/15/20% |
 | 8 | Division by zero (`D21`, `J27`, `M43`) | Guard and return `None` |
 | 9 | NIIT can go negative | Clamp NII at ≥ 0 |
 | 10 | `C33`, `C36` not clamped | Clamp at 0 |
@@ -290,30 +192,34 @@ Note that the standard-deduction check depends on `YEAR(TODAY())` in the workboo
 **Other tests**
 - Unit tests per function, using boundary values at each bracket edge.
 - Property tests: tax is non-decreasing in income, allocation buckets sum to taxable income, and the app never returns a negative tax.
-- Table tests: duplicate keys, unsorted buckets and missing years must fail loudly.
+- Table tests (exist): duplicate keys, unsorted buckets, header mismatches, missing files and invalid values fail loudly.
 - Cross-check: `income_tax()` (year-filtered) equals the bracket-allocation total.
+- UI smoke test: `streamlit.testing.v1.AppTest` runs `streamlit_app.py` and asserts no exception. Skipped if Streamlit is not installed.
 - Scenario JSON tests: see section 12.5.
 
 ## 9. Phases and deliverables
-| Phase | Scope | Done when |
+| Phase | Scope | Status / done when |
 |---|---|---|
-| 0 | Repo skeleton, CSVs (incl. `tblInputMap.csv`), loader, validator, CI | `validate_tables.py` passes |
+| 0 | Repo skeleton, CSVs (incl. `tblInputMap.csv`), loader, validator, CI, Streamlit skeleton | Done except the first Streamlit Cloud deploy; `validate_tables.py` passes |
 | 1 | Pure calc modules, `legacy=True` engine | Golden test passes to the cent |
-| 2 | FastAPI form, results page, tables view, scenario JSON import/export (web + xlwings) | Manual run matches the workbook for 3+ scenarios; Excel/web round trip passes |
-| 3 | Fix flags (§7), more years and statuses, JSON API, Dockerfile | 2027 loads by CSV edit only |
-| 4 | Saved scenarios (SQLite), PDF report, auth | As prioritized |
+| 2 | Streamlit inputs form, results page, scenario JSON import/export (web + xlwings) | Manual run matches the workbook for 3+ scenarios; Excel/web round trip passes |
+| 3 | Fix flags (§7), more years and statuses, stacked AMT LTCG | 2027 loads by CSV edit only |
+| 4 | Saved scenarios (external storage), PDF report | As prioritized |
 
 ## 10. Annual maintenance (no code change)
-1. Append the new year's rows to each CSV, with a full set across all dependent tables (the spec notes that 2027 is not loaded).
+1. Append the new year's rows to each CSV in `data/`, with a full set across all dependent tables (the spec notes that 2027 is not loaded).
 2. Update `tblParameters.csv` constants.
-3. Run `scripts/validate_tables.py`, then `POST /admin/reload`.
-4. Add a regression test for the new year.
+3. Run `python scripts/validate_tables.py`. CI runs it on every push.
+4. Push to GitHub. Community Cloud redeploys the app; use "Reload tables" if the app is already running.
+5. Add a regression test for the new year.
 
 ## 11. Open questions for the owner
 1. Is Separate (MFS) status in scope for phase 1?
 2. Should the app default to `legacy=False` (fixes on)?
 3. Where do the 2026 37% bracket and the missing 72/101+ RMD ages come from? Please supply sourced figures.
 4. Confirm `version!B12` and `version!B13` are empty so they can hold the report title and last-updated date (section 12.7).
+5. Is another private app already using the one-private-app slot on Streamlit Community Cloud (section 13)?
+6. Will real client data ever be entered in the hosted app? If so, decide on access control before first use.
 
 ## 12. Scenario JSON import/export
 
@@ -346,45 +252,21 @@ Rules:
 - Files are UTF-8 without a BOM. Readers open with `utf-8-sig` so a BOM does not break them.
 
 ### 12.3 Input map (external CSV, not in code)
-`data/tblInputMap.csv` defines the pairs, their order, the Excel fallback address, and the Python field.
-```csv
-Order,Name,Cell,Type,Field
-1,inpTaxYear,H10,int,tax_year
-2,inpFilingStatus,C3,text,filing_status
-3,inpDateOfBirth,C4,date,dob
-4,inpSpouseDateOfBirth,E4,date,spouse_dob
-5,inpPriorYearEndIRABalance,C5,money,prior_ye_ira_balance
-6,inpSocialSecurityBenefits,C10,money,social_security_benefits
-7,inpIRAConversion,C11,money,ira_conversion
-8,inpQualifiedDividends,C12,money,qualified_dividends
-9,inpTaxableInterest,C13,money,taxable_interest
-10,inpOrdinaryDividends,C14,money,ordinary_dividends
-11,inpAdditionalIncome,C15,money,additional_income
-12,inpShortTermCapitalGainLoss,C16,money,short_term_gain_loss
-13,inpWagesAndTips,C17,money,wages_and_tips
-14,inpLongTermCapitalGains,C18,money,long_term_capital_gains
-15,inpCapitalLossCarryover,C19,money,capital_loss_carryover
-16,inpScheduleADeductions,C29,money,schedule_a_deductions
-17,inpQualifiedBusinessIncome,C30,money,qualified_business_income
-18,inpScheduleASALT,J35,money,schedule_a_salt
-19,inpAMTOtherPreferences,J38,money,amt_other_preferences
-20,inpTaxWithheld,C42,money,tax_withheld
-21,inpAdditionalTax,C43,money,additional_tax
-```
+`data/tblInputMap.csv` (21 rows, in the repo) defines the pairs, their order, the Excel fallback address, the type (`int`, `text`, `date`, `money`) and the Python field on `FilerInputs`. Columns: `Order,Name,Cell,Type,Field`.
+
 Notes:
 - Rows 1–3 and 5–19 are existing `inp...` names in the workbook spec.
-- `inpSpouseDateOfBirth`, `inpTaxWithheld` and `inpAdditionalTax` are the names the spec recommends but did not add. Until they exist in the workbook, the xlwings script falls back to the `Cell` column (E4, C42, C43).
+- `inpSpouseDateOfBirth` (E4), `inpTaxWithheld` (C42) and `inpAdditionalTax` (C43) are the names the spec recommends but did not add. Until they exist in the workbook, the xlwings script falls back to the `Cell` column.
 - `inpScheduleADeductions`, `inpIRAConversion`, `inpSocialSecurityBenefits` and `inpShortTermCapitalGainLoss` are sheet-scoped to `TaxSheetSingle`. The script resolves every name through that worksheet.
 - `C9` (RMD) is a formula, so it is not an input and is not in the file.
 
 ### 12.4 Python components
-- `app/scenario_io.py`: `ScenarioFile` Pydantic model (`schema_version`, `report_title`, `last_updated`, `workbook_version`, `inputs: list[InputPair]`). It provides `to_filer_inputs()` and `from_filer_inputs(inputs, title)`, both driven by `tblInputMap.csv`.
+- `app/scenario_io.py` (Phase 2): `ScenarioFile` Pydantic model (`schema_version`, `report_title`, `last_updated`, `workbook_version`, `inputs: list[InputPair]`). It provides `to_filer_inputs()` and `from_filer_inputs(inputs, title)`, both driven by `tblInputMap.csv`.
 - Validation: reject an unsupported `schemaVersion` major. Check type per `Type` column (date parse, numeric, non-negative where the engine requires). Warn on unknown names. Require `reportTitle`.
-- `GET /api/scenario/export?title=...` returns the JSON file and stamps `lastUpdated`.
-- `POST /api/scenario/import` accepts the JSON, validates it, fills the form and returns a warnings list.
-- UI: "Import scenario" and "Export scenario" buttons plus an editable Report title field on the form.
-- The results page and any PDF/print output show the report title and last-updated date in the header.
-- `tables.py` validates `tblInputMap.csv` at startup: unique `Order` and `Name`, valid `Type`, and every `Field` exists on `FilerInputs`.
+- Streamlit export: `st.download_button` with the JSON string, file name derived from the report title, `lastUpdated` stamped at export time.
+- Streamlit import: `st.file_uploader` (type `json`), parse and validate, copy values into `st.session_state`, show a warnings list.
+- UI: editable Report title field; the results header shows the title and last-updated date.
+- `tables.py` already validates `tblInputMap.csv` at startup: unique `Order` and `Name`, valid `Type`, and every `Field` exists on `FilerInputs`.
 
 ### 12.5 Tests
 - Round trip: Excel export → Python import → Python export is identical in names, order and values.
@@ -392,7 +274,7 @@ Notes:
 - Failure cases: blank values, a missing title, a malformed date, an unknown name, a formula target, and a BOM-prefixed file.
 
 ### 12.6 Excel integration: xlwings (replaces VBA)
-`excel/scenario_xlwings.py` uses xlwings to read and write the input cells in the open workbook. It needs Excel and Python on the machine (`pip install xlwings`). No VBA module is required.
+`excel/scenario_xlwings.py` uses xlwings to read and write the input cells in the open workbook. It needs Excel and Python on the machine (`pip install xlwings`, or the `excel` extra). No VBA module is required. It runs locally only; it is not part of the hosted Streamlit app.
 
 Command-line use, with the workbook open in Excel:
 ```
@@ -414,3 +296,23 @@ Behavior:
 - Add two metadata cells on the `version` sheet (rows 12–13 are free per the spec layout; confirm): `A12` "Report Title" with `B12` named `inpReportTitle`, and `A13` "Last Updated" with `B13` named `inpLastUpdated`. The script uses the cell addresses if the names do not exist.
 - Optionally create the three recommended names `inpSpouseDateOfBirth` (E4), `inpTaxWithheld` (C42), `inpAdditionalTax` (C43). Existing formulas are unaffected.
 - No other layout or formula changes.
+
+## 13. Hosting on Streamlit Community Cloud
+**Deploy steps**
+1. Push the repo to GitHub (done). You need admin rights on the repo. Private repos need Streamlit authorized for private access.
+2. At share.streamlit.io, create an app: pick the repo, branch `main`, main file `streamlit_app.py`.
+3. In Advanced settings choose Python 3.12. The Python version cannot be changed later without deleting and redeploying the app.
+4. Deploy. Every push to `main` redeploys.
+
+**Dependencies**
+- Community Cloud installs from `requirements.txt` in the repo root (currently `pydantic` and `streamlit`). `pyproject.toml` alone is not used for hosting.
+- `xlwings` is intentionally not in `requirements.txt`; it is local-only.
+
+**Access and privacy**
+- A private-repo app is private by default: only invited viewers (by email) can open it. Community Cloud allows one private app at a time.
+- Do not enter real client identifiers or account data until access control is decided (open question 6). For a public app, add app-level authentication.
+
+**Behavior to design around**
+- Files written to the app's local disk are lost on restart. Saved scenarios (phase 4) need external storage. Until then, scenarios are exported and imported as JSON files.
+- The app reads `data/*.csv` from the repo. CSV changes take effect on redeploy, or after "Reload tables".
+- Table validation failures do not stop the deploy. The app shows the errors on the Status tab, and CI flags them on the push.

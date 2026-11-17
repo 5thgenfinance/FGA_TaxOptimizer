@@ -10,9 +10,9 @@ requires-python = ">=3.11"
 dependencies = ["pydantic>=2.6"]
 
 [project.optional-dependencies]
-web = ["fastapi>=0.110", "uvicorn>=0.29", "jinja2>=3.1", "python-multipart>=0.0.9"]
+app = ["streamlit>=1.40"]
 excel = ["xlwings>=0.31"]
-dev = ["pytest>=8", "hypothesis>=6"]
+dev = ["pytest>=8", "hypothesis>=6", "streamlit>=1.40"]
 
 [tool.setuptools.packages.find]
 include = ["app*"]
