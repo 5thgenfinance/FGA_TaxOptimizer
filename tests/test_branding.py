@@ -32,14 +32,32 @@ def test_load_brand_ignores_invalid_json(tmp_path):
 def test_css_uses_brand_colors_fonts_and_selectors():
     css = branding.css(branding.load_brand(Path("does-not-exist.json")))
     for expected in ["#1a2744", "#c49a4a", "#f7f4ef", "Playfair Display", "Source Sans 3",
-                     "Playfair+Display", ".st-key-report_title", '[data-testid="stSidebar"]',
-                     '[data-testid="stExpander"]', ".fga-header", "mix-blend-mode"]:
+                     "Playfair+Display", ".st-key-report_title", ".st-key-fga_header",
+                     '[data-testid="stSidebar"]', '[data-testid="stExpander"]', ".fga-header",
+                     branding.LIGHT_BLUE]:
         assert expected in css, expected
+
+
+def test_css_assigns_heading_font_to_headings_and_body_font_to_text():
+    css = branding.css(branding.load_brand(Path("does-not-exist.json")))
+    heading_rule = next(r for r in css.split("}") if "'Playfair Display', serif" in r and "h1" in r)
+    assert ".fga-title" in heading_rule and "stMetricValue" in heading_rule
+    body_rule = next(r for r in css.split("}") if "'Source Sans 3', sans-serif" in r)
+    assert ".stApp p" in body_rule and ".stApp input" in body_rule
+
+
+def test_css_has_navy_sidebar_with_light_blue_cards_and_white_fields():
+    css = branding.css(branding.load_brand(Path("does-not-exist.json")))
+    sidebar_rule = next(r for r in css.split("}") if r.strip().startswith('[data-testid="stSidebar"],'))
+    assert "#1a2744" in sidebar_rule
+    card_rule = next(r for r in css.split("}") if "details" in r and "stExpander" in r)
+    assert branding.LIGHT_BLUE in card_rule and "#c49a4a" in card_rule
+    assert "background: #ffffff !important" in css
 
 
 def test_header_without_logo_has_title_and_tagline_but_no_image():
     brand = branding.load_brand(Path("does-not-exist.json"))
-    brand["logos"] = {"shield_light": "assets/brand/nope.jpg"}
+    brand["logos"] = {"shield_dark": "assets/brand/nope.jpg"}
     html = branding.header_html(brand, "Smith & <Co>")
     assert "Smith &amp; &lt;Co&gt;" in html and "Registered Investment Adviser" in html
     assert "<img" not in html
@@ -50,8 +68,17 @@ def test_header_embeds_logo_when_present(tmp_path, monkeypatch):
     image.write_bytes(b"\x89PNG\r\n\x1a\n" + b"0" * 20)
     monkeypatch.setattr(branding, "REPO_ROOT", tmp_path)
     brand = branding.load_brand(Path("does-not-exist.json"))
-    brand["logos"] = {"shield_light": "logo.png"}
+    brand["logos"] = {"shield_dark": "logo.png", "shield_light": "logo.png"}
     assert 'src="data:image/png;base64,' in branding.header_html(brand, "T")
+    assert 'src="data:image/png;base64,' in branding.footer_html(brand)
+
+
+def test_footer_has_disclosure_and_firm_line():
+    brand = branding.load_brand(Path("does-not-exist.json"))
+    brand["logos"] = {}
+    html = branding.footer_html(brand)
+    assert branding.DISCLOSURE in html and "Fifth Generation Advisers \u00b7 Registered Investment Adviser" in html
+    assert "<img" not in html
 
 
 def test_data_uri(tmp_path):
@@ -81,6 +108,15 @@ def test_streamlit_theme_matches_brand_file():
     assert config["backgroundColor"] == colors["offwhite"]
     assert config["textColor"] == colors["navy"]
     assert config["secondaryBackgroundColor"] == branding.PANEL
+
+
+def test_app_uses_navy_logos_on_navy_and_white_logo_on_the_pdf():
+    brand = branding.load_brand()
+    assert brand["logos"]["shield_dark"].endswith("shield_navy.jpg")
+    assert brand["logos"]["ribbon_dark"].endswith("ribbon_navy.jpg")
+    source = (REPO_ROOT / "streamlit_app.py").read_text(encoding="utf-8")
+    assert '"ribbon_dark"' in source and '"shield_dark"' in source and "ribbon_white.jpg" in source
+    assert 'key="fga_header"' in source and "footer_html" in source
 
 
 def test_brand_images_exist_in_the_repository():

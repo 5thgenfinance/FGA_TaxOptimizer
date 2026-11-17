@@ -31,11 +31,12 @@ def _load():
 
 def _apply_branding() -> None:
     st.markdown(f"<style>{branding.css(BRAND)}</style>", unsafe_allow_html=True)
-    ribbon = branding.logo_file(BRAND, "ribbon_light")
-    shield = branding.logo_file(BRAND, "shield_light")
+    ribbon = branding.logo_file(BRAND, "ribbon_dark")
+    shield = branding.logo_file(BRAND, "shield_dark")
     if ribbon:
         st.logo(str(ribbon), icon_image=str(shield) if shield else None, size="large")
-    st.markdown(branding.header_html(BRAND, APP_TITLE), unsafe_allow_html=True)
+    with st.container(key="fga_header"):
+        st.markdown(branding.header_html(BRAND, APP_TITLE), unsafe_allow_html=True)
 
 
 def _handle_import(raw: bytes, tables) -> None:
@@ -259,6 +260,8 @@ def main() -> None:
         _tables_tab(tables)
     with status_tab:
         _status_tab(tables)
+
+    st.markdown(branding.footer_html(BRAND), unsafe_allow_html=True)
 
 
 main()

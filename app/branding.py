@@ -2,6 +2,9 @@
 
 Reads brand/fga_brand.json and the images in assets/brand/. No Streamlit
 import, so everything here is testable.
+
+Logo naming: the *_dark files (shield_navy, ribbon_navy) are drawn for NAVY surfaces and the
+*_light files (shield_cream, ribbon_cream) for off-white surfaces; ribbon_white is for paper.
 """
 from __future__ import annotations
 
@@ -16,7 +19,10 @@ from app.config import REPO_ROOT
 
 BRAND_JSON = REPO_ROOT / "brand" / "fga_brand.json"
 ASSET_DIR = REPO_ROOT / "assets" / "brand"
-PANEL = "#e3e9f4"  # expander and sidebar panel fill
+PANEL = "#e3e9f4"  # Streamlit secondaryBackgroundColor
+LIGHT_BLUE = "#dfe7f3"  # sidebar container fill
+MUTED = "#8a93a8"  # placeholder text
+DISCLOSURE = "Estimates are for planning purposes only and are not tax, legal or investment advice."
 MIME = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg"}
 
 DEFAULT_BRAND = {
@@ -85,8 +91,8 @@ def format_updated(iso_timestamp: str) -> str:
 
 
 def header_html(brand: dict, title: str) -> str:
-    """The navy header band: shield, title and tagline."""
-    uri = data_uri(logo_file(brand, "shield_light"))
+    """Content of the navy header band: navy-surface shield, title and tagline."""
+    uri = data_uri(logo_file(brand, "shield_dark"))
     image = f'<img src="{uri}" alt="">' if uri else ""
     return (
         '<div class="fga-header">'
@@ -95,48 +101,96 @@ def header_html(brand: dict, title: str) -> str:
     )
 
 
+def footer_html(brand: dict) -> str:
+    """Disclosure footer with the off-white-surface shield."""
+    uri = data_uri(logo_file(brand, "shield_light"))
+    image = f'<img src="{uri}" alt="">' if uri else ""
+    firm = f"{brand['firm_name']} \u00b7 {brand['tagline']}"
+    return (f'<div class="fga-footer">{image}<div>{escape(DISCLOSURE)}<br>'
+            f"<span>{escape(firm)}</span></div></div>")
+
+
 def css(brand: dict) -> str:
-    """Stylesheet that gives Streamlit the Fifth Generation look."""
+    """Stylesheet that gives Streamlit the Fifth Generation look (navy chrome, off-white page).
+
+    Headings use the heading font; everything else uses the body font. The navy-surface logo
+    JPGs carry their own navy background, so no blending is needed.
+    """
     colors, fonts = brand["colors"], brand["fonts"]
     navy, bronze, off, char = colors["navy"], colors["bronze"], colors["offwhite"], colors["charcoal"]
     heading, body = fonts["heading"], fonts["body"]
     families = (f"family={heading.replace(' ', '+')}:ital,wght@0,400;0,600;0,700;1,400;1,600"
                 f"&family={body.replace(' ', '+')}:wght@400;600;700")
+    side = '[data-testid="stSidebar"]'
     return f"""
 @import url('https://fonts.googleapis.com/css2?{families}&display=swap');
-.stApp {{ background: {off}; color: {navy}; font-family: '{body}', sans-serif; }}
-h1, h2, h3, h4 {{ font-family: '{heading}', serif; color: {navy}; }}
-header[data-testid="stHeader"] {{ background: transparent; }}
-.block-container {{ padding-top: 1.2rem; }}
+[data-testid="stElementContainer"]:has(style) {{ display: none !important; }}
+.stApp, .stApp p, .stApp li, .stApp label, .stApp input, .stApp textarea, .stApp button,
+.stApp [data-baseweb], [data-testid="stMetricLabel"], [data-testid="stCaptionContainer"],
+.fga-meta, .fga-tagline, .fga-footer {{ font-family: '{body}', sans-serif; }}
+.stApp {{ background: {off}; color: {char}; }}
+h1, h2, h3, h4, h5, h6, [data-testid="stHeading"], .fga-title, .fga-side-title,
+[data-testid="stMetricValue"] {{ font-family: '{heading}', serif; color: {navy}; }}
 
-.fga-header {{ display: flex; align-items: center; gap: 14px; background: {navy};
-  border-bottom: 2px solid {bronze}; padding: 14px 22px; margin-bottom: 1.2rem; }}
-.fga-header img {{ height: 46px; mix-blend-mode: lighten; }}
-.fga-title {{ font-family: '{heading}', serif; color: {off}; font-size: 1.6rem; font-weight: 700; line-height: 1.1; }}
-.fga-tagline {{ color: {bronze}; letter-spacing: .22em; font-size: .62rem; text-transform: uppercase; margin-top: 4px; }}
-.fga-meta {{ color: {char}; font-size: .9rem; margin: -.4rem 0 1rem 0; }}
+header[data-testid="stHeader"] {{ background: {navy} !important; }}
+header[data-testid="stHeader"] *, [data-testid="stToolbar"] * {{ color: #ffffff !important; }}
+header[data-testid="stHeader"] svg {{ fill: #ffffff !important; }}
+.block-container {{ padding-top: 3.75rem !important; padding-left: 2rem !important; padding-right: 2rem !important; }}
 
-.st-key-report_title input {{ font-family: '{heading}', serif; font-style: italic; font-size: 2.1rem;
-  font-weight: 600; color: {navy}; background: transparent; border: none;
-  border-bottom: 1px solid #cfc9bd; border-radius: 0; padding-left: 0; }}
+div:has(> .st-key-fga_header) {{ position: sticky; top: 3.75rem; z-index: 999; background: {off}; padding-bottom: 10px; }}
+.st-key-fga_header {{ background: {navy}; width: calc(100% + 4rem) !important; max-width: none !important;
+  margin: 0 -2rem; padding: 4px 2rem 18px 2rem; border-bottom: 3px solid {bronze}; box-sizing: border-box; }}
+.fga-header {{ display: flex; align-items: center; gap: 12px; position: relative; top: -6px; }}
+.fga-header img {{ height: 38px; width: auto; display: block; margin: 0; }}
+.fga-title {{ color: #ffffff; font-size: 1.5rem; font-weight: 700; line-height: 1.1; letter-spacing: .03em; }}
+.fga-tagline {{ color: {bronze}; letter-spacing: .18em; font-size: 11px; text-transform: uppercase; margin-top: 2px; }}
+.fga-meta {{ color: {char}; margin: -.4rem 0 1rem 0; }}
+
+.st-key-report_title input {{ font-family: '{heading}', serif; font-style: italic; font-size: 2.4rem;
+  font-weight: 700; color: {navy}; background: transparent; border: none;
+  border-bottom: 2px solid #d8dce6; border-radius: 0; padding-left: 0; }}
+.st-key-report_title input::placeholder {{ color: {MUTED}; font-weight: 400; opacity: 1; }}
 .st-key-report_title label {{ display: none; }}
 
-[data-testid="stMetricValue"] {{ font-family: '{heading}', serif; color: {navy}; font-size: 2rem; }}
-[data-testid="stMetricLabel"] p {{ font-size: .78rem; color: {char}; }}
+[data-testid="stMetricValue"] {{ font-size: 2rem; }}
+[data-testid="stMetricLabel"] p {{ font-size: .8rem; color: {char}; }}
 
-[data-testid="stSidebar"] {{ background: {navy}; }}
-[data-testid="stSidebar"] [data-testid="stLogo"] {{ mix-blend-mode: lighten; }}
-[data-testid="stSidebar"] h1, [data-testid="stSidebar"] h2, [data-testid="stSidebar"] h3,
-[data-testid="stSidebar"] .fga-side-title {{ font-family: '{heading}', serif; color: {off}; }}
-.fga-side-title {{ font-size: 1.5rem; font-weight: 700; margin: .4rem 0 .6rem 0; }}
-[data-testid="stSidebar"] p, [data-testid="stSidebar"] label {{ color: {off}; }}
-[data-testid="stSidebar"] [data-testid="stExpander"] details {{ background: {PANEL};
-  border: 1px solid #c9d3e6; border-radius: 4px; margin-bottom: .5rem; }}
-[data-testid="stSidebar"] [data-testid="stExpander"] summary p {{ color: {navy}; font-weight: 600; }}
-[data-testid="stSidebar"] [data-testid="stExpander"] p,
-[data-testid="stSidebar"] [data-testid="stExpander"] label,
-[data-testid="stSidebar"] [data-testid="stExpander"] span {{ color: {navy}; }}
+{side}, {side} > div:first-child {{ background: {navy} !important; }}
+{side} {{ border-right: 1px solid {bronze}; }}
+{side} h1, {side} h2, {side} h3, {side} label, {side} p, {side} span,
+{side} [data-testid="stCaptionContainer"] {{ color: #ffffff; }}
+{side} svg {{ fill: #ffffff; }}
+{side} .fga-side-title {{ color: #ffffff; font-size: 1.5rem; font-weight: 700; margin: .4rem 0 .6rem 0; }}
+
+{side} [data-testid="stExpander"] details {{ background: {LIGHT_BLUE}; border: 1px solid {bronze};
+  border-radius: 8px; margin-bottom: .5rem; }}
+{side} [data-testid="stExpander"] summary, {side} [data-testid="stExpander"] label,
+{side} [data-testid="stExpander"] p, {side} [data-testid="stExpander"] span,
+{side} [data-testid="stExpander"] [data-testid="stCaptionContainer"] {{ color: {navy}; }}
+{side} [data-testid="stExpander"] summary p {{ font-weight: 600; }}
+{side} [data-testid="stExpander"] svg {{ fill: {navy}; }}
+
+{side} [data-baseweb="input"], {side} [data-baseweb="select"] > div, {side} [data-baseweb="base-input"],
+{side} [data-testid="stDateInput"] > div:not([data-testid="stWidgetLabel"]) {{ background: #ffffff !important; }}
+{side} [data-baseweb="input"] *, {side} [data-baseweb="base-input"] *, {side} [data-baseweb="select"] *,
+{side} input, {side} [data-testid="stDateInput"] * {{ color: {char} !important; -webkit-text-fill-color: {char} !important; }}
+{side} [data-baseweb="input"] svg, {side} [data-baseweb="select"] svg,
+{side} [data-testid="stDateInput"] svg {{ fill: {char} !important; }}
+{side} [data-testid="stDateInput"] [data-testid="stWidgetLabel"] *,
+{side} [data-testid="stDateInput"] label * {{ color: #ffffff !important; -webkit-text-fill-color: #ffffff !important; }}
+{side} [data-testid="stExpander"] [data-testid="stDateInput"] [data-testid="stWidgetLabel"] *,
+{side} [data-testid="stExpander"] [data-testid="stDateInput"] label * {{ color: {navy} !important; -webkit-text-fill-color: {navy} !important; }}
+
+{side} button[kind="secondary"] {{ background: {LIGHT_BLUE}; color: {navy}; border: 1px solid {bronze}; }}
+{side} button[kind="secondary"] p, {side} button[kind="secondary"] span {{ color: {navy}; }}
+[data-testid="stFileUploaderDropzone"] {{ border: 2px dashed {bronze}; background: #ffffff; min-height: 90px; }}
+[data-testid="stSidebarHeader"] {{ min-height: 3.5rem; }}
 
 .stButton > button, .stDownloadButton > button {{ border: 1px solid {bronze}; color: {navy}; background: #ffffff; }}
-.stButton > button:hover, .stDownloadButton > button:hover {{ border-color: {navy}; color: {navy}; background: {PANEL}; }}
+.stButton > button:hover, .stDownloadButton > button:hover {{ border-color: {navy}; color: {navy}; background: {LIGHT_BLUE}; }}
+
+.fga-footer {{ display: flex; align-items: center; gap: 14px; border-top: 1px solid {bronze}; margin-top: 32px;
+  padding-top: 16px; font-size: 13px; line-height: 1.5; color: {char}; }}
+.fga-footer img {{ height: 40px; width: auto; }}
+.fga-footer span {{ color: {navy}; font-weight: 600; }}
 """
