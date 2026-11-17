@@ -6,7 +6,7 @@ from html import escape
 
 import streamlit as st
 
-from app import branding, form_state, pdf_report, report, scenario_io, scenario_store
+from app import branding, excel_import, form_state, pdf_report, report, scenario_io
 from app.calc.common import CalcError
 from app.calc.engine import compute
 from app.display import display_records
@@ -56,57 +56,37 @@ def _handle_import(raw: bytes, tables) -> None:
     st.session_state["_import_messages"] = messages
 
 
-def _saved_scenarios(tables, payload: str | None) -> None:
-    store = scenario_store.default_store()
-    st.markdown("**Saved scenarios**")
-    st.caption("Stored on the server that runs this app. On Streamlit Community Cloud they are lost "
-               "when the app restarts, so keep an exported copy of anything important.")
-    if st.button("Save current scenario", disabled=payload is None):
-        try:
-            saved = store.save(payload, tables)
-        except (scenario_io.ScenarioError, OSError) as exc:
-            st.error(f"Could not save: {exc}")
-        else:
-            st.success(f"Saved \"{saved.title}\".")
-
-    saved_items = store.list(tables)
-    if not saved_items:
-        st.caption("No saved scenarios yet.")
+def _handle_excel(raw: bytes, filename: str, tables) -> None:
+    """Convert an uploaded Excel template to scenario JSON, then load it like any JSON import."""
+    try:
+        conversion = excel_import.convert_workbook(raw, tables.rows("tblInputMap"), filename)
+    except excel_import.WorkbookError as exc:
+        st.session_state["_import_messages"] = [("error", str(exc))]
         return
-    labels = {s.name: f"{s.title} ({s.last_updated[:16].replace('T', ' ')})" for s in saved_items}
-    choice = st.selectbox("Saved scenario", list(labels), format_func=labels.get, key="saved_choice")
-    col_load, col_delete = st.columns(2)
-    if col_load.button("Load"):
-        try:
-            _handle_import(store.load(choice).encode("utf-8"), tables)
-        except scenario_io.ScenarioError as exc:
-            st.error(str(exc))
-        else:
-            st.rerun()
-    if col_delete.button("Delete"):
-        try:
-            store.delete(choice)
-        except scenario_io.ScenarioError as exc:
-            st.error(str(exc))
-        else:
-            st.session_state.pop("saved_choice", None)
-            st.rerun()
+    _handle_import(conversion.json_text.encode("utf-8"), tables)
+    messages = st.session_state["_import_messages"]
+    messages.insert(0, ("info", f"Converted the Excel workbook \"{filename}\": {conversion.filled} inputs filled, "
+                                f"{len(conversion.blank)} blank. Use Export scenario (JSON) to save the JSON file."))
+    messages.extend(("warning", w) for w in conversion.warnings)
 
 
 def _scenario_tools(tables) -> None:
-    """Import, export, saved scenarios and options. Runs before the input widgets are
+    """Import and export of scenarios, plus options. Runs before the input widgets are
     created so that an import can set their values."""
-    with st.expander("Scenario: import, export, save"):
-        uploaded = st.file_uploader("Import scenario (JSON)", type="json", key="scenario_upload")
+    with st.expander("Scenario: import / export"):
+        uploaded = st.file_uploader("Import scenario (JSON or Excel template)", type=["json", "xlsx", "xlsm"],
+                                    key="scenario_upload")
         if uploaded is not None:
             token = (uploaded.name, uploaded.size)
             if st.session_state.get("_import_token") != token:
                 st.session_state["_import_token"] = token
-                _handle_import(uploaded.getvalue(), tables)
+                if uploaded.name.lower().endswith((".xlsx", ".xlsm")):
+                    _handle_excel(uploaded.getvalue(), uploaded.name, tables)
+                else:
+                    _handle_import(uploaded.getvalue(), tables)
         for kind, text in st.session_state.get("_import_messages", []):
             getattr(st, kind)(text)
 
-        payload = None
         try:
             inputs = form_state.read_state(st.session_state, tables)
             payload = scenario_io.export_scenario(inputs, st.session_state["report_title"], tables)
@@ -118,7 +98,6 @@ def _scenario_tools(tables) -> None:
                 file_name=scenario_io.safe_filename(st.session_state["report_title"]),
                 mime="application/json",
             )
-        _saved_scenarios(tables, payload)
 
     with st.expander("Options"):
         st.checkbox("Reproduce workbook (legacy mode)", key="legacy_mode",
