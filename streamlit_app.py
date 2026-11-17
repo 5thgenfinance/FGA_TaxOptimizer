@@ -18,6 +18,9 @@ from app.tables import SPECS, TableValidationError, load_all
 APP_TITLE = "Fifth Generation Tax Optimizer"
 BRAND = branding.load_brand()
 FAVICON = branding.asset("favicon.png")
+EXCEL_LABEL = "Download Excel Version"
+EXCEL_URL = ("https://www.dropbox.com/scl/fi/lri563e388sae3oecgjsu/TaxRetirementOptimizer.xltx"
+             "?rlkey=ytpzvkcrkto7ctl5ap54ttkry&st=mg50abay&dl=0")
 
 st.set_page_config(page_title=APP_TITLE, page_icon=str(FAVICON) if FAVICON.is_file() else None,
                    layout="wide", initial_sidebar_state="expanded")
@@ -32,14 +35,32 @@ def _load():
         return None, exc.errors
 
 
+def _header_button_css() -> str:
+    """Style the Excel download button so it sits at the right end of the navy header band."""
+    bronze, navy = BRAND["colors"]["bronze"], BRAND["colors"]["navy"]
+    return (
+        '.st-key-fga_header [data-testid="stHorizontalBlock"] { align-items: center; }\n'
+        '.st-key-fga_header [data-testid="stLinkButton"] { display: flex; justify-content: flex-end; }\n'
+        f'.st-key-fga_header [data-testid="stLinkButton"] a {{ background: transparent; border: 1px solid {bronze}; '
+        'color: #ffffff; padding: 0.3rem 0.9rem; white-space: nowrap; }\n'
+        '.st-key-fga_header [data-testid="stLinkButton"] a p, '
+        '.st-key-fga_header [data-testid="stLinkButton"] a span { color: #ffffff; }\n'
+        f'.st-key-fga_header [data-testid="stLinkButton"] a:hover {{ background: {bronze}; border-color: {bronze}; }}\n'
+        f'.st-key-fga_header [data-testid="stLinkButton"] a:hover p, '
+        f'.st-key-fga_header [data-testid="stLinkButton"] a:hover span {{ color: {navy}; }}'
+    )
+
+
 def _apply_branding() -> None:
-    st.markdown(f"<style>{branding.css(BRAND)}</style>", unsafe_allow_html=True)
+    st.markdown(f"<style>{branding.css(BRAND)}\n{_header_button_css()}</style>", unsafe_allow_html=True)
     ribbon = branding.logo_file(BRAND, "ribbon_dark")
     shield = branding.logo_file(BRAND, "shield_dark")
     if ribbon:
         st.logo(str(ribbon), icon_image=str(shield) if shield else None, size="large")
     with st.container(key="fga_header"):
-        st.markdown(branding.header_html(BRAND, APP_TITLE), unsafe_allow_html=True)
+        title_column, link_column = st.columns([5, 1])
+        title_column.markdown(branding.header_html(BRAND, APP_TITLE), unsafe_allow_html=True)
+        link_column.link_button(EXCEL_LABEL, EXCEL_URL, help="Opens the Excel version of the Tax Retirement Optimizer.")
 
 
 def _handle_import(raw: bytes, tables) -> None:
