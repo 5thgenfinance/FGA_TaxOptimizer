@@ -6,7 +6,8 @@ from html import escape
 
 import streamlit as st
 
-from app import branding, excel_import, form_state, pdf_report, report, scenario_io
+from app import (branding, excel_import, form_state, input_help, pdf_report, report, scenario_io,
+                 version as app_version)
 from app.calc.common import CalcError
 from app.calc.engine import compute
 from app.display import display_records
@@ -108,23 +109,25 @@ def _scenario_tools(tables) -> None:
 
 
 def _value_widget(row, key: str, disabled: bool = False) -> None:
+    tip = input_help.help_for(row.Field)
     if row.Type == "date":
         st.date_input(row.Label, min_value=date(1900, 1, 1), max_value=date(2100, 12, 31),
-                      key=key, disabled=disabled)
+                      key=key, disabled=disabled, help=tip)
     elif row.Type == "money":
-        st.number_input(row.Label, step=100.0, format="%.2f", key=key, disabled=disabled)
+        st.number_input(row.Label, step=100.0, format="%.2f", key=key, disabled=disabled, help=tip)
     else:
-        st.text_input(row.Label, key=key, disabled=disabled)
+        st.text_input(row.Label, key=key, disabled=disabled, help=tip)
 
 
 def _render_field(row, tables) -> None:
     key = form_state.state_key(row.Field)
+    tip = input_help.help_for(row.Field)
     if row.Field == "tax_year":
-        st.selectbox(row.Label, tables.supported_years(), key=key)
+        st.selectbox(row.Label, tables.supported_years(), key=key, help=tip)
     elif row.Field == "filing_status":
-        st.selectbox(row.Label, list(form_state.STATUS_OPTIONS), key=key)
+        st.selectbox(row.Label, list(form_state.STATUS_OPTIONS), key=key, help=tip)
     elif row.Field in form_state.OPTIONAL_FIELDS:
-        enabled = st.checkbox(f"Enter: {row.Label}", key=form_state.flag_key(row.Field))
+        enabled = st.checkbox(f"Enter: {row.Label}", key=form_state.flag_key(row.Field), help=tip)
         _value_widget(row, key, disabled=not enabled)
     else:
         _value_widget(row, key)
@@ -189,9 +192,11 @@ def _results_tab(tables) -> None:
 def _status_tab(tables) -> None:
     st.success("All tables loaded and validated.")
     years = tables.supported_years()
-    col1, col2 = st.columns(2)
-    col1.metric("Tables loaded", len(SPECS))
-    col2.metric("Supported tax years", ", ".join(str(y) for y in years) or "none")
+    col1, col2, col3 = st.columns(3)
+    col1.metric("Application version", app_version.__version__)
+    col2.metric("Tables loaded", len(SPECS))
+    col3.metric("Supported tax years", ", ".join(str(y) for y in years) or "none")
+    st.caption(f"Calculations were built from Excel workbook version {app_version.WORKBOOK_BASELINE}.")
     for warning in tables.warnings:
         st.warning(warning)
 
@@ -241,6 +246,7 @@ def main() -> None:
         _status_tab(tables)
 
     st.markdown(branding.footer_html(BRAND), unsafe_allow_html=True)
+    st.caption(f"{app_version.version_line()} \u00b7 Excel workbook baseline {app_version.WORKBOOK_BASELINE}")
 
 
 main()
