@@ -1,0 +1,112 @@
+{
+  "schemaVersion": "1.0",
+  "reportTitle": "Test 5 - Single high earner with NIIT",
+  "lastUpdated": "2026-11-17T15:00:00",
+  "workbookVersion": "test case",
+  "inputs": [
+    {
+      "name": "inpTaxYear",
+      "value": 2026
+    },
+    {
+      "name": "inpFilingStatus",
+      "value": "Single"
+    },
+    {
+      "name": "inpDateOfBirth",
+      "value": "1978-11-03"
+    },
+    {
+      "name": "inpSpouseDateOfBirth",
+      "value": null
+    },
+    {
+      "name": "inpPriorYearEndIRABalance",
+      "value": 0
+    },
+    {
+      "name": "inpSocialSecurityBenefits",
+      "value": 0
+    },
+    {
+      "name": "inpIRAConversion",
+      "value": 0
+    },
+    {
+      "name": "inpQualifiedDividends",
+      "value": 6000
+    },
+    {
+      "name": "inpTaxableInterest",
+      "value": 6000
+    },
+    {
+      "name": "inpOrdinaryDividends",
+      "value": 8000
+    },
+    {
+      "name": "inpAdditionalIncome",
+      "value": 0
+    },
+    {
+      "name": "inpShortTermCapitalGainLoss",
+      "value": 4000
+    },
+    {
+      "name": "inpWagesAndTips",
+      "value": 215000
+    },
+    {
+      "name": "inpLongTermCapitalGains",
+      "value": 30000
+    },
+    {
+      "name": "inpCapitalLossCarryover",
+      "value": 0
+    },
+    {
+      "name": "inpScheduleADeductions",
+      "value": 28000
+    },
+    {
+      "name": "inpQualifiedBusinessIncome",
+      "value": 0
+    },
+    {
+      "name": "inpScheduleASALT",
+      "value": null
+    },
+    {
+      "name": "inpAMTOtherPreferences",
+      "value": 0
+    },
+    {
+      "name": "inpTaxWithheld",
+      "value": 48000
+    },
+    {
+      "name": "inpAdditionalTax",
+      "value": 0
+    }
+  ],
+  "expectedResults": {
+    "rmd": 0,
+    "taxable_social_security": 0,
+    "agi": 263000,
+    "standard_deduction": 16100,
+    "applicable_deduction": 28000,
+    "adjusted_taxable_income": 235000,
+    "taxable_ordinary_income": 199000,
+    "taxable_preferential_income": 36000,
+    "ordinary_tax": 40358,
+    "ltcg_tax": 5400,
+    "niit": 1824,
+    "amt_owed": 0,
+    "total_tax": 47582,
+    "tax_paid": 48000,
+    "due_or_refund": -418,
+    "effective_rate": 0.18092,
+    "additional_ltcg_at_0pct": 0,
+    "left_before_schedule_a": 0
+  }
+}

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "fga-taxoptimizer"
-version = "0.5.0"
+version = "1.0.0"
 description = "FGA tax planning tool: Python conversion of TaxRetirementOptimizer.xlsx"
 requires-python = ">=3.11"
 dependencies = ["pydantic>=2.6"]

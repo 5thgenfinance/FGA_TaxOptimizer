@@ -7,16 +7,21 @@ from html import escape
 
 import streamlit as st
 
-from app import (branding, excel_import, form_state, input_help, pdf_report, report, scenario_io,
+from app import (branding, curves, excel_import, form_state, input_help, pdf_report, report, scenario_io,
                  version as app_version, whatif)
 from app.calc.common import CalcError
 from app.calc.engine import compute
+from app.config import REPO_ROOT
 from app.display import display_records
+from app.models import FilerInputs
 from app.tables import SPECS, TableValidationError, load_all
 
 APP_TITLE = "Fifth Generation Tax Optimizer"
 BRAND = branding.load_brand()
 FAVICON = branding.asset("favicon.png")
+EXCEL_LABEL = "Download Excel Version"
+EXCEL_FILE = REPO_ROOT / "TaxRetirementOptimizer.xlsx"
+EXCEL_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
 st.set_page_config(page_title=APP_TITLE, page_icon=str(FAVICON) if FAVICON.is_file() else None,
                    layout="wide", initial_sidebar_state="expanded")
@@ -31,14 +36,43 @@ def _load():
         return None, exc.errors
 
 
+@st.cache_data(show_spinner=False)
+def _excel_bytes() -> bytes | None:
+    """The Excel workbook stored in the repository, or None if it is missing."""
+    try:
+        return EXCEL_FILE.read_bytes()
+    except OSError:
+        return None
+
+
+def _header_button_css() -> str:
+    """Style the Excel download button so it sits at the right end of the navy header band."""
+    bronze, navy = BRAND["colors"]["bronze"], BRAND["colors"]["navy"]
+    button = '.st-key-fga_header [data-testid="stDownloadButton"] button'
+    return (
+        '.st-key-fga_header [data-testid="stHorizontalBlock"] { align-items: center; }\n'
+        '.st-key-fga_header [data-testid="stDownloadButton"] { display: flex; justify-content: flex-end; }\n'
+        f'{button} {{ background: transparent; border: 1px solid {bronze}; color: #ffffff; '
+        'padding: 0.3rem 0.9rem; white-space: nowrap; }\n'
+        f'{button} p, {button} span {{ color: #ffffff; }}\n'
+        f'{button}:hover {{ background: {bronze}; border-color: {bronze}; }}\n'
+        f'{button}:hover p, {button}:hover span {{ color: {navy}; }}'
+    )
+
+
 def _apply_branding() -> None:
-    st.markdown(f"<style>{branding.css(BRAND)}</style>", unsafe_allow_html=True)
+    st.markdown(f"<style>{branding.css(BRAND)}\n{_header_button_css()}</style>", unsafe_allow_html=True)
     ribbon = branding.logo_file(BRAND, "ribbon_dark")
     shield = branding.logo_file(BRAND, "shield_dark")
     if ribbon:
         st.logo(str(ribbon), icon_image=str(shield) if shield else None, size="large")
     with st.container(key="fga_header"):
-        st.markdown(branding.header_html(BRAND, APP_TITLE), unsafe_allow_html=True)
+        title_column, link_column = st.columns([5, 1])
+        title_column.markdown(branding.header_html(BRAND, APP_TITLE), unsafe_allow_html=True)
+        workbook = _excel_bytes()
+        if workbook is not None:
+            link_column.download_button(EXCEL_LABEL, workbook, file_name=EXCEL_FILE.name, mime=EXCEL_MIME,
+                                        help="Download the Excel version of the Tax Retirement Optimizer.")
 
 
 def _handle_import(raw: bytes, tables) -> None:
@@ -106,6 +140,7 @@ def _scenario_tools(tables) -> None:
                     help="Matches the Excel workbook's quirks instead of applying the planned fixes.")
         if st.button("Reload tables"):
             st.cache_resource.clear()
+            st.cache_data.clear()
             st.rerun()
 
 
@@ -225,8 +260,105 @@ def _change_label(diff: Decimal) -> str | None:
     return None if text == "$0" else text
 
 
+LEVER_UI = {
+    "ltcg": {"title": "Long-term capital gains", "label": "Long-term capital gains: add or remove ($)", "format": "%+d",
+             "help": "Added to your long-term capital gains. A negative amount removes gains."},
+    "stcg": {"title": "Short-term capital gains", "label": "Short-term capital gains: add or remove ($)", "format": "%+d",
+             "help": "Added to your short-term gain or loss, which is taxed as ordinary income. "
+                     "A negative amount removes gains."},
+    "extra_deductions": {"title": "Schedule A deductions", "label": "Additional Schedule A deductions ($)", "format": "%d",
+                         "help": "Added to your Schedule A deductions, for example more charitable gifts. "
+                                 "They lower tax only once total itemized deductions exceed the standard deduction."},
+    "extra_ira": {"title": "IRA distributions", "label": "Additional IRA distribution ($)", "format": "%d",
+                  "help": "Extra taxable money taken from a traditional IRA, or a Roth conversion. It is taxed "
+                          "as ordinary income and does not change the required minimum distribution."},
+}
+SHOW_KEYS = {lever: f"wi_show_{lever}" for lever in curves.LEVERS}
+CONTROL_WIDTH = "60%"  # each slider and its curve are 40% narrower than the column
+
+
+def _whatif_css() -> str:
+    """Narrow the four sliders and their curves so the pairs fit comfortably in two columns."""
+    selectors = [f".st-key-{key}" for key in whatif.SLIDER_KEYS.values()]
+    selectors += [f".st-key-wi_chart_{lever}" for lever in curves.LEVERS]
+    return f"{', '.join(selectors)} {{ width: {CONTROL_WIDTH} !important; }}"
+
+
+def _adjustments(values: dict) -> whatif.Adjustments:
+    return whatif.Adjustments(*(Decimal(values[key]) for key in curves.LEVERS))
+
+
+@st.cache_data(show_spinner="Updating the tax curves...", max_entries=48)
+def _lever_analysis(lever: str, inputs_json: str, legacy: bool, others: tuple, cap_percent: int, _tables):
+    """Sweep one lever over its range, holding the other sliders where they are (cached)."""
+    inputs = FilerInputs.model_validate_json(inputs_json)
+    held = dict(zip(curves.LEVERS, others))
+
+    def adjusted(x: int):
+        return whatif.adjusted_inputs(inputs, _adjustments({**held, lever: x}))
+
+    def run(x: int):
+        try:
+            return compute(adjusted(x), _tables, legacy=legacy)
+        except (CalcError, ValueError, ArithmeticError):
+            return None
+
+    gap = None
+    if lever == "extra_deductions":
+        start = run(0)
+        if start is not None:
+            gap = float(report.itemizing_gap(start, adjusted(0)))
+    return curves.analyze(run, lever, cap_percent=cap_percent if lever == "extra_ira" else None, gap=gap)
+
+
+def _curve_chart(analysis: dict, current: int, current_tax) -> None:
+    """Total tax across the lever's range, with the tax on the next dollar underneath."""
+    import altair as alt
+    import pandas as pd
+
+    navy, bronze = BRAND["colors"]["navy"], BRAND["colors"]["bronze"]
+    data = pd.DataFrame(analysis["points"], columns=["amount", "tax", "marginal", "ss"])
+    x = alt.X("amount:Q", title=None, axis=alt.Axis(format="$,.0f"), scale=alt.Scale(nice=False))
+    tips = [alt.Tooltip("amount:Q", format="$,.0f", title="Amount"), alt.Tooltip("tax:Q", format="$,.0f", title="Total tax"),
+            alt.Tooltip("marginal:Q", format=".1%", title="Tax on the next dollar")]
+    line = alt.Chart(data).mark_line(color=navy).encode(
+        x=x, y=alt.Y("tax:Q", title="Total tax", axis=alt.Axis(format="$,.0f"), scale=alt.Scale(zero=False)), tooltip=tips)
+    here = pd.DataFrame({"amount": [current], "tax": [float(current_tax)]})
+    rule = alt.Chart(here).mark_rule(color=bronze, strokeDash=[4, 3]).encode(x="amount:Q")
+    dot = alt.Chart(here).mark_point(color=bronze, filled=True, size=110).encode(x="amount:Q", y="tax:Q")
+    top = alt.layer(line, rule, dot).properties(height=150)
+    rates = data.dropna(subset=["marginal"])
+    ceiling = max(0.1, float(rates["marginal"].max()) * 1.1) if len(rates) else 0.4
+    bottom = alt.Chart(rates).mark_line(color=bronze, interpolate="step-after").encode(
+        x=alt.X("amount:Q", title="Amount added (+) or removed (-)", axis=alt.Axis(format="$,.0f"), scale=alt.Scale(nice=False)),
+        y=alt.Y("marginal:Q", title="Tax on next $", axis=alt.Axis(format="%"), scale=alt.Scale(domain=[0, ceiling])),
+        tooltip=tips).properties(height=80)
+    st.altair_chart(alt.vconcat(top, bottom).configure_view(strokeWidth=0), use_container_width=True)
+
+
+def _lever_block(lever: str, values: dict, analyses: dict, alt_result) -> int:
+    """Title, show/hide switch, chart, slider and planning notes for one lever."""
+    ui, (low, high) = LEVER_UI[lever], curves.RANGES[lever]
+    st.markdown(f"**{ui['title']}**")
+    show = st.checkbox("Show curve and notes", value=True, key=SHOW_KEYS[lever],
+                       help="Hide this lever's chart and planning notes. The slider keeps working.")
+    analysis = analyses.get(lever) if show else None
+    if analysis and analysis["points"]:
+        with st.container(key=f"wi_chart_{lever}"):
+            _curve_chart(analysis, values[lever], alt_result.total_tax)
+    value = st.slider(ui["label"], low, high, 0, 1_000, key=whatif.SLIDER_KEYS[lever], format=ui["format"], help=ui["help"])
+    if lever == "extra_ira":
+        st.selectbox("Keep the tax on each extra dollar at or below", curves.MARGINAL_CAPS, index=2, key="wi_ira_cap",
+                     format_func=lambda cap: f"{cap}%", disabled=not show,
+                     help="The notes below show how much IRA income fits before the tax on the next dollar passes this rate.")
+    if analysis is not None:
+        notes = curves.guidance(analysis, values[lever])
+        st.markdown("\n".join("- " + note.replace("$", "\\$") for note in notes))
+    return value
+
+
 def _whatif_tab(tables) -> None:
-    """Sliders that adjust a copy of the inputs and compare the results with the current ones."""
+    """Tax curves and sliders that adjust a copy of the inputs and compare the results with the current ones."""
     try:
         inputs = form_state.read_state(st.session_state, tables)
         legacy = st.session_state.get("legacy_mode", False)
@@ -235,35 +367,38 @@ def _whatif_tab(tables) -> None:
         st.error(f"Cannot calculate: {exc}")
         return
 
-    st.caption("Move a slider to see how the result changes. These sliders only change a copy of your inputs; "
-               "the Inputs panel and the Results tab stay as entered.")
-    left, right = st.columns(2)
-    with left:
-        ltcg = st.slider("Long-term capital gains: add or remove ($)", -50_000, 250_000, 0, 1_000,
-                         key=whatif.SLIDER_KEYS["ltcg"], format="%+d",
-                         help="Added to your long-term capital gains. A negative amount removes gains.")
-        stcg = st.slider("Short-term capital gains: add or remove ($)", -50_000, 100_000, 0, 1_000,
-                         key=whatif.SLIDER_KEYS["stcg"], format="%+d",
-                         help="Added to your short-term gain or loss, which is taxed as ordinary income. "
-                              "A negative amount removes gains.")
-    with right:
-        extra_deductions = st.slider("Additional Schedule A deductions ($)", 0, 100_000, 0, 1_000,
-                                     key=whatif.SLIDER_KEYS["extra_deductions"],
-                                     help="Added to your Schedule A deductions, for example more charitable gifts. "
-                                          "They lower tax only once total itemized deductions exceed the standard deduction.")
-        extra_ira = st.slider("Additional IRA distribution ($)", 0, 250_000, 0, 1_000,
-                              key=whatif.SLIDER_KEYS["extra_ira"],
-                              help="Extra taxable money taken from a traditional IRA, or a Roth conversion. It is taxed "
-                                   "as ordinary income and does not change the required minimum distribution.")
-    st.button("Reset sliders", key="wi_reset", on_click=_reset_whatif)
-
-    adjustments = whatif.Adjustments(Decimal(ltcg), Decimal(stcg), Decimal(extra_deductions), Decimal(extra_ira))
+    # Charts sit above their sliders, so read the slider values saved from the last interaction.
+    values = {lever: int(st.session_state.get(key, 0)) for lever, key in whatif.SLIDER_KEYS.items()}
+    adjustments = _adjustments(values)
     alt_inputs = whatif.adjusted_inputs(inputs, adjustments)
     try:
         alt = compute(alt_inputs, tables, legacy=legacy)
     except (CalcError, ValueError) as exc:
         st.error(f"Cannot calculate the what-if: {exc}")
         return
+
+    st.markdown(f"<style>{_whatif_css()}</style>", unsafe_allow_html=True)
+    st.caption("Each chart sweeps one lever across its range while the other sliders stay where you set them. The top "
+               "line is total tax; the lower line is the tax on the next dollar. The dot is your slider setting. A flat "
+               "stretch is free, a steep one is expensive, and a step up marks a bracket or other threshold. Use the "
+               "checkbox under each title to hide that lever's chart and notes. These sliders only change a copy of "
+               "your inputs; the Inputs panel and the Results tab stay as entered.")
+    analyses: dict = {}
+    inputs_json = inputs.model_dump_json()
+    cap_percent = int(st.session_state.get("wi_ira_cap", 22))
+    for lever in curves.LEVERS:
+        if st.session_state.get(SHOW_KEYS[lever], True):  # a hidden lever costs no calculation
+            others = tuple(0 if key == lever else values[key] for key in curves.LEVERS)
+            analyses[lever] = _lever_analysis(lever, inputs_json, legacy, others, cap_percent, tables)
+
+    left, right = st.columns(2)
+    with left:
+        _lever_block("ltcg", values, analyses, alt)
+        _lever_block("stcg", values, analyses, alt)
+    with right:
+        _lever_block("extra_deductions", values, analyses, alt)
+        _lever_block("extra_ira", values, analyses, alt)
+    st.button("Reset sliders", key="wi_reset", on_click=_reset_whatif)
 
     effective_change = whatif.signed_points(base.effective_rate, alt.effective_rate)
     columns = st.columns(4)
@@ -284,7 +419,8 @@ def _whatif_tab(tables) -> None:
             st.warning(warning)
     st.caption("Realizing more gains or income also raises AGI, which can change taxable Social Security and the "
                "net investment income tax; both are included in the figures above. Medicare premium surcharges "
-               "(IRMAA) and state taxes are not modeled.")
+               "(IRMAA), state taxes, and the Affordable Care Act subsidy cliffs are not modeled. These notes are "
+               "planning aids, not tax advice.")
 
 
 def _status_tab(tables) -> None:
@@ -314,6 +450,7 @@ def main() -> None:
             st.write(f"- {err}")
         if st.button("Reload tables"):
             st.cache_resource.clear()
+            st.cache_data.clear()
             st.rerun()
         return
 
