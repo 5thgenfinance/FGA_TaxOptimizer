@@ -2,11 +2,13 @@
 from __future__ import annotations
 
 from datetime import date
+from decimal import Decimal
 from html import escape
 
 import streamlit as st
 
-from app import branding, form_state, pdf_report, report, scenario_io, scenario_store
+from app import (branding, excel_import, form_state, input_help, pdf_report, report, scenario_io,
+                 version as app_version, whatif)
 from app.calc.common import CalcError
 from app.calc.engine import compute
 from app.display import display_records
@@ -56,57 +58,37 @@ def _handle_import(raw: bytes, tables) -> None:
     st.session_state["_import_messages"] = messages
 
 
-def _saved_scenarios(tables, payload: str | None) -> None:
-    store = scenario_store.default_store()
-    st.markdown("**Saved scenarios**")
-    st.caption("Stored on the server that runs this app. On Streamlit Community Cloud they are lost "
-               "when the app restarts, so keep an exported copy of anything important.")
-    if st.button("Save current scenario", disabled=payload is None):
-        try:
-            saved = store.save(payload, tables)
-        except (scenario_io.ScenarioError, OSError) as exc:
-            st.error(f"Could not save: {exc}")
-        else:
-            st.success(f"Saved \"{saved.title}\".")
-
-    saved_items = store.list(tables)
-    if not saved_items:
-        st.caption("No saved scenarios yet.")
+def _handle_excel(raw: bytes, filename: str, tables) -> None:
+    """Convert an uploaded Excel template to scenario JSON, then load it like any JSON import."""
+    try:
+        conversion = excel_import.convert_workbook(raw, tables.rows("tblInputMap"), filename)
+    except excel_import.WorkbookError as exc:
+        st.session_state["_import_messages"] = [("error", str(exc))]
         return
-    labels = {s.name: f"{s.title} ({s.last_updated[:16].replace('T', ' ')})" for s in saved_items}
-    choice = st.selectbox("Saved scenario", list(labels), format_func=labels.get, key="saved_choice")
-    col_load, col_delete = st.columns(2)
-    if col_load.button("Load"):
-        try:
-            _handle_import(store.load(choice).encode("utf-8"), tables)
-        except scenario_io.ScenarioError as exc:
-            st.error(str(exc))
-        else:
-            st.rerun()
-    if col_delete.button("Delete"):
-        try:
-            store.delete(choice)
-        except scenario_io.ScenarioError as exc:
-            st.error(str(exc))
-        else:
-            st.session_state.pop("saved_choice", None)
-            st.rerun()
+    _handle_import(conversion.json_text.encode("utf-8"), tables)
+    messages = st.session_state["_import_messages"]
+    messages.insert(0, ("info", f"Converted the Excel workbook \"{filename}\": {conversion.filled} inputs filled, "
+                                f"{len(conversion.blank)} blank. Use Export scenario (JSON) to save the JSON file."))
+    messages.extend(("warning", w) for w in conversion.warnings)
 
 
 def _scenario_tools(tables) -> None:
-    """Import, export, saved scenarios and options. Runs before the input widgets are
+    """Import and export of scenarios, plus options. Runs before the input widgets are
     created so that an import can set their values."""
-    with st.expander("Scenario: import, export, save"):
-        uploaded = st.file_uploader("Import scenario (JSON)", type="json", key="scenario_upload")
+    with st.expander("Scenario: import / export"):
+        uploaded = st.file_uploader("Import scenario (JSON or Excel template)", type=["json", "xlsx", "xlsm"],
+                                    key="scenario_upload")
         if uploaded is not None:
             token = (uploaded.name, uploaded.size)
             if st.session_state.get("_import_token") != token:
                 st.session_state["_import_token"] = token
-                _handle_import(uploaded.getvalue(), tables)
+                if uploaded.name.lower().endswith((".xlsx", ".xlsm")):
+                    _handle_excel(uploaded.getvalue(), uploaded.name, tables)
+                else:
+                    _handle_import(uploaded.getvalue(), tables)
         for kind, text in st.session_state.get("_import_messages", []):
             getattr(st, kind)(text)
 
-        payload = None
         try:
             inputs = form_state.read_state(st.session_state, tables)
             payload = scenario_io.export_scenario(inputs, st.session_state["report_title"], tables)
@@ -118,7 +100,6 @@ def _scenario_tools(tables) -> None:
                 file_name=scenario_io.safe_filename(st.session_state["report_title"]),
                 mime="application/json",
             )
-        _saved_scenarios(tables, payload)
 
     with st.expander("Options"):
         st.checkbox("Reproduce workbook (legacy mode)", key="legacy_mode",
@@ -129,23 +110,25 @@ def _scenario_tools(tables) -> None:
 
 
 def _value_widget(row, key: str, disabled: bool = False) -> None:
+    tip = input_help.help_for(row.Field)
     if row.Type == "date":
         st.date_input(row.Label, min_value=date(1900, 1, 1), max_value=date(2100, 12, 31),
-                      key=key, disabled=disabled)
+                      key=key, disabled=disabled, help=tip)
     elif row.Type == "money":
-        st.number_input(row.Label, step=100.0, format="%.2f", key=key, disabled=disabled)
+        st.number_input(row.Label, step=100.0, format="%.2f", key=key, disabled=disabled, help=tip)
     else:
-        st.text_input(row.Label, key=key, disabled=disabled)
+        st.text_input(row.Label, key=key, disabled=disabled, help=tip)
 
 
 def _render_field(row, tables) -> None:
     key = form_state.state_key(row.Field)
+    tip = input_help.help_for(row.Field)
     if row.Field == "tax_year":
-        st.selectbox(row.Label, tables.supported_years(), key=key)
+        st.selectbox(row.Label, tables.supported_years(), key=key, help=tip)
     elif row.Field == "filing_status":
-        st.selectbox(row.Label, list(form_state.STATUS_OPTIONS), key=key)
+        st.selectbox(row.Label, list(form_state.STATUS_OPTIONS), key=key, help=tip)
     elif row.Field in form_state.OPTIONAL_FIELDS:
-        enabled = st.checkbox(f"Enter: {row.Label}", key=form_state.flag_key(row.Field))
+        enabled = st.checkbox(f"Enter: {row.Label}", key=form_state.flag_key(row.Field), help=tip)
         _value_widget(row, key, disabled=not enabled)
     else:
         _value_widget(row, key)
@@ -159,9 +142,32 @@ def _input_sections(tables) -> None:
                 _render_field(row, tables)
 
 
-def _kpi_row(items: list[tuple[str, str]]) -> None:
-    for column, (label, value) in zip(st.columns(len(items)), items):
-        column.metric(label, value)
+def _kpi_row(items: list[tuple]) -> None:
+    """One row of metrics. Each item is (label, value) or (label, value, tooltip)."""
+    for column, (label, value, *tip) in zip(st.columns(len(items)), items):
+        column.metric(label, value, help=tip[0] if tip else None)
+
+
+def _planning_row(result, inputs) -> None:
+    """Room left in the 0% capital gains bracket and before Schedule A beats the standard deduction."""
+    room, zero_top = report.zero_ltcg_room(result)
+    if zero_top is None:
+        zero_tip = "The 0% long-term capital gains bracket was not found in the tax tables."
+    else:
+        zero_tip = (
+            f"Long-term capital gains you could still realize at the 0% rate. The 0% bracket ends at "
+            f"{report.fmt_money(zero_top)} of taxable income for {result.filing_status} in {result.tax_year}; "
+            "this is that amount less your taxable ordinary income and the gains already in the bracket. "
+            "Realizing more gains also raises AGI, which can increase taxable Social Security and NIIT; "
+            "this figure does not allow for that.")
+    gap_tip = (
+        "More Schedule A deductions (gifts, medical, taxes) you could add before itemizing beats the standard "
+        f"deduction of {report.fmt_money(result.standard_deduction)}. Until they do, extra itemized deductions "
+        "do not lower regular tax. Itemized deductions are counted up to the AGI limit.")
+    _kpi_row([
+        ("Additional LTCG at 0%", "n/a" if room is None else report.fmt_money(room), zero_tip),
+        ("Left before Schedule A", report.fmt_money(report.itemizing_gap(result, inputs)), gap_tip),
+    ])
 
 
 def _results_tab(tables) -> None:
@@ -186,6 +192,7 @@ def _results_tab(tables) -> None:
         ("Required minimum distribution", report.fmt_money(result.rmd)),
         ("Standard deduction", report.fmt_money(result.standard_deduction)),
     ])
+    _planning_row(result, inputs)
     for warning in result.warnings:
         st.warning(warning)
 
@@ -207,12 +214,87 @@ def _results_tab(tables) -> None:
                      use_container_width=True)
 
 
+def _reset_whatif() -> None:
+    for key in whatif.SLIDER_KEYS.values():
+        st.session_state[key] = 0
+
+
+def _change_label(diff: Decimal) -> str | None:
+    """A metric delta such as '+$1,200', or None when there is no change."""
+    text = whatif.signed_money(diff)
+    return None if text == "$0" else text
+
+
+def _whatif_tab(tables) -> None:
+    """Sliders that adjust a copy of the inputs and compare the results with the current ones."""
+    try:
+        inputs = form_state.read_state(st.session_state, tables)
+        legacy = st.session_state.get("legacy_mode", False)
+        base = compute(inputs, tables, legacy=legacy)
+    except (CalcError, ValueError) as exc:
+        st.error(f"Cannot calculate: {exc}")
+        return
+
+    st.caption("Move a slider to see how the result changes. These sliders only change a copy of your inputs; "
+               "the Inputs panel and the Results tab stay as entered.")
+    left, right = st.columns(2)
+    with left:
+        ltcg = st.slider("Long-term capital gains: add or remove ($)", -50_000, 250_000, 0, 1_000,
+                         key=whatif.SLIDER_KEYS["ltcg"], format="%+d",
+                         help="Added to your long-term capital gains. A negative amount removes gains.")
+        stcg = st.slider("Short-term capital gains: add or remove ($)", -50_000, 100_000, 0, 1_000,
+                         key=whatif.SLIDER_KEYS["stcg"], format="%+d",
+                         help="Added to your short-term gain or loss, which is taxed as ordinary income. "
+                              "A negative amount removes gains.")
+    with right:
+        extra_deductions = st.slider("Additional Schedule A deductions ($)", 0, 100_000, 0, 1_000,
+                                     key=whatif.SLIDER_KEYS["extra_deductions"],
+                                     help="Added to your Schedule A deductions, for example more charitable gifts. "
+                                          "They lower tax only once total itemized deductions exceed the standard deduction.")
+        extra_ira = st.slider("Additional IRA distribution ($)", 0, 250_000, 0, 1_000,
+                              key=whatif.SLIDER_KEYS["extra_ira"],
+                              help="Extra taxable money taken from a traditional IRA, or a Roth conversion. It is taxed "
+                                   "as ordinary income and does not change the required minimum distribution.")
+    st.button("Reset sliders", key="wi_reset", on_click=_reset_whatif)
+
+    adjustments = whatif.Adjustments(Decimal(ltcg), Decimal(stcg), Decimal(extra_deductions), Decimal(extra_ira))
+    alt_inputs = whatif.adjusted_inputs(inputs, adjustments)
+    try:
+        alt = compute(alt_inputs, tables, legacy=legacy)
+    except (CalcError, ValueError) as exc:
+        st.error(f"Cannot calculate the what-if: {exc}")
+        return
+
+    effective_change = whatif.signed_points(base.effective_rate, alt.effective_rate)
+    columns = st.columns(4)
+    columns[0].metric("Total tax", report.fmt_money(alt.total_tax), _change_label(alt.total_tax - base.total_tax),
+                      delta_color="inverse")
+    columns[1].metric(report.due_label(alt), report.fmt_money(abs(alt.due_or_refund)),
+                      _change_label(alt.due_or_refund - base.due_or_refund), delta_color="inverse",
+                      help="The delta is the change in the amount due. A negative figure means less owed or a larger refund.")
+    columns[2].metric("Effective rate (of AGI)", report.fmt_rate(alt.effective_rate),
+                      None if effective_change in ("n/a", "0.00 pts") else effective_change, delta_color="inverse")
+    change = whatif.tax_on_the_change(base, alt, adjustments)
+    columns[3].metric("Tax on the change", "n/a" if change is None else report.fmt_rate(change),
+                      help="The extra (or lower) total tax divided by the net income added or removed by the sliders. "
+                           "Deductions are not income, so a deduction-only change shows n/a.")
+    st.dataframe(whatif.comparison(base, inputs, alt, alt_inputs), hide_index=True, use_container_width=True)
+    for warning in alt.warnings:
+        if warning not in base.warnings:
+            st.warning(warning)
+    st.caption("Realizing more gains or income also raises AGI, which can change taxable Social Security and the "
+               "net investment income tax; both are included in the figures above. Medicare premium surcharges "
+               "(IRMAA) and state taxes are not modeled.")
+
+
 def _status_tab(tables) -> None:
     st.success("All tables loaded and validated.")
     years = tables.supported_years()
-    col1, col2 = st.columns(2)
-    col1.metric("Tables loaded", len(SPECS))
-    col2.metric("Supported tax years", ", ".join(str(y) for y in years) or "none")
+    col1, col2, col3 = st.columns(3)
+    col1.metric("Application version", app_version.__version__)
+    col2.metric("Tables loaded", len(SPECS))
+    col3.metric("Supported tax years", ", ".join(str(y) for y in years) or "none")
+    st.caption(f"Calculations were built from Excel workbook version {app_version.WORKBOOK_BASELINE}.")
     for warning in tables.warnings:
         st.warning(warning)
 
@@ -253,15 +335,18 @@ def main() -> None:
     st.markdown(f'<div class="fga-meta">Tax year {year} &nbsp;|&nbsp; Last updated {updated}</div>',
                 unsafe_allow_html=True)
 
-    results_tab, tables_tab, status_tab = st.tabs(["Results", "Tables", "Status"])
+    results_tab, whatif_tab, tables_tab, status_tab = st.tabs(["Results", "What-if", "Tables", "Status"])
     with results_tab:
         _results_tab(tables)
+    with whatif_tab:
+        _whatif_tab(tables)
     with tables_tab:
         _tables_tab(tables)
     with status_tab:
         _status_tab(tables)
 
     st.markdown(branding.footer_html(BRAND), unsafe_allow_html=True)
+    st.caption(f"{app_version.version_line()} \u00b7 Excel workbook baseline {app_version.WORKBOOK_BASELINE}")
 
 
 main()
