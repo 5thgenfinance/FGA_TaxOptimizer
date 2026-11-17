@@ -10,9 +10,9 @@ requires-python = ">=3.11"
 dependencies = ["pydantic>=2.6"]
 
 [project.optional-dependencies]
-app = ["streamlit>=1.40"]
+app = ["streamlit>=1.40", "reportlab>=4.0"]
 excel = ["xlwings>=0.31"]
-dev = ["pytest>=8", "hypothesis>=6", "streamlit>=1.40"]
+dev = ["pytest>=8", "hypothesis>=6", "streamlit>=1.40", "reportlab>=4.0", "pypdf>=4.0"]
 
 [tool.setuptools.packages.find]
 include = ["app*"]

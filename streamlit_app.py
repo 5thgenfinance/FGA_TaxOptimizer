@@ -5,7 +5,7 @@ from datetime import date
 
 import streamlit as st
 
-from app import form_state, report, scenario_io
+from app import form_state, pdf_report, report, scenario_io, scenario_store
 from app.calc.common import CalcError
 from app.calc.engine import compute
 from app.display import display_records
@@ -40,6 +40,43 @@ def _handle_import(raw: bytes, tables) -> None:
     st.session_state["_import_messages"] = messages
 
 
+def _saved_scenarios(tables, payload: str | None) -> None:
+    store = scenario_store.default_store()
+    st.subheader("Saved scenarios")
+    st.caption("Stored on the server that runs this app. On Streamlit Community Cloud they are lost "
+               "when the app restarts, so keep an exported copy of anything important.")
+    if st.button("Save current scenario", disabled=payload is None):
+        try:
+            saved = store.save(payload, tables)
+        except (scenario_io.ScenarioError, OSError) as exc:
+            st.error(f"Could not save: {exc}")
+        else:
+            st.success(f"Saved \"{saved.title}\".")
+
+    saved_items = store.list(tables)
+    if not saved_items:
+        st.caption("No saved scenarios yet.")
+        return
+    labels = {s.name: f"{s.title} ({s.last_updated[:16].replace('T', ' ')})" for s in saved_items}
+    choice = st.selectbox("Saved scenario", list(labels), format_func=labels.get, key="saved_choice")
+    col_load, col_delete = st.columns(2)
+    if col_load.button("Load"):
+        try:
+            _handle_import(store.load(choice).encode("utf-8"), tables)
+        except scenario_io.ScenarioError as exc:
+            st.error(str(exc))
+        else:
+            st.rerun()
+    if col_delete.button("Delete"):
+        try:
+            store.delete(choice)
+        except scenario_io.ScenarioError as exc:
+            st.error(str(exc))
+        else:
+            st.session_state.pop("saved_choice", None)
+            st.rerun()
+
+
 def _sidebar(tables) -> None:
     with st.sidebar:
         st.header("Scenario")
@@ -52,6 +89,7 @@ def _sidebar(tables) -> None:
         for kind, text in st.session_state.get("_import_messages", []):
             getattr(st, kind)(text)
 
+        payload = None
         try:
             inputs = form_state.read_state(st.session_state, tables)
             payload = scenario_io.export_scenario(inputs, st.session_state["report_title"], tables)
@@ -63,6 +101,8 @@ def _sidebar(tables) -> None:
                 file_name=scenario_io.safe_filename(st.session_state["report_title"]),
                 mime="application/json",
             )
+
+        _saved_scenarios(tables, payload)
 
         st.header("Options")
         st.checkbox("Reproduce workbook (legacy mode)", key="legacy_mode",
@@ -112,7 +152,8 @@ def _results_tab(tables) -> None:
         st.error(f"Cannot calculate: {exc}")
         return
 
-    st.subheader(st.session_state["report_title"])
+    title = st.session_state["report_title"]
+    st.subheader(title)
     st.caption(f"Tax year {result.tax_year}, {result.filing_status} | "
                f"Scenario last updated {st.session_state['last_updated']}"
                + (" | Legacy mode" if result.legacy else ""))
@@ -123,8 +164,12 @@ def _results_tab(tables) -> None:
     for warning in result.warnings:
         st.warning(warning)
 
-    for title, rows in report.sections(result):
-        with st.expander(title, expanded=title == "Summary"):
+    pdf = pdf_report.build_pdf(result, inputs, tables, title, st.session_state["last_updated"])
+    st.download_button("Download PDF report", pdf, file_name=pdf_report.pdf_filename(title),
+                       mime="application/pdf")
+
+    for section_title, rows in report.sections(result):
+        with st.expander(section_title, expanded=section_title == "Summary"):
             st.dataframe([{"Item": label, "Amount": value} for label, value in rows],
                          hide_index=True, use_container_width=True)
     with st.expander("Ordinary income brackets"):
