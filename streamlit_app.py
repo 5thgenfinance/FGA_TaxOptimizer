@@ -35,7 +35,8 @@ def _apply_branding() -> None:
     shield = branding.logo_file(BRAND, "shield_dark")
     if ribbon:
         st.logo(str(ribbon), icon_image=str(shield) if shield else None, size="large")
-    st.markdown(branding.header_html(BRAND, APP_TITLE), unsafe_allow_html=True)
+    with st.container(key="fga_header"):
+        st.markdown(branding.header_html(BRAND, APP_TITLE), unsafe_allow_html=True)
 
 
 def _handle_import(raw: bytes, tables) -> None:
@@ -190,7 +191,7 @@ def _results_tab(tables) -> None:
 
     title = st.session_state["report_title"]
     pdf = pdf_report.build_pdf(result, inputs, tables, title, st.session_state["last_updated"],
-                               logo=branding.asset("ribbon_navy.jpg"))
+                               logo=branding.asset("ribbon_white.jpg"))
     st.download_button("Download PDF report", pdf, file_name=pdf_report.pdf_filename(title),
                        mime="application/pdf")
 
@@ -259,6 +260,8 @@ def main() -> None:
         _tables_tab(tables)
     with status_tab:
         _status_tab(tables)
+
+    st.markdown(branding.footer_html(BRAND), unsafe_allow_html=True)
 
 
 main()
