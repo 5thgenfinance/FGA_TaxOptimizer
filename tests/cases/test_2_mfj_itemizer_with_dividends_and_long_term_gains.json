@@ -1,0 +1,112 @@
+{
+  "schemaVersion": "1.0",
+  "reportTitle": "Test 2 - MFJ itemizer with dividends and long-term gains",
+  "lastUpdated": "2026-11-17T15:00:00",
+  "workbookVersion": "test case",
+  "inputs": [
+    {
+      "name": "inpTaxYear",
+      "value": 2026
+    },
+    {
+      "name": "inpFilingStatus",
+      "value": "Jointly"
+    },
+    {
+      "name": "inpDateOfBirth",
+      "value": "1981-02-10"
+    },
+    {
+      "name": "inpSpouseDateOfBirth",
+      "value": "1983-08-21"
+    },
+    {
+      "name": "inpPriorYearEndIRABalance",
+      "value": 0
+    },
+    {
+      "name": "inpSocialSecurityBenefits",
+      "value": 0
+    },
+    {
+      "name": "inpIRAConversion",
+      "value": 0
+    },
+    {
+      "name": "inpQualifiedDividends",
+      "value": 3000
+    },
+    {
+      "name": "inpTaxableInterest",
+      "value": 0
+    },
+    {
+      "name": "inpOrdinaryDividends",
+      "value": 4000
+    },
+    {
+      "name": "inpAdditionalIncome",
+      "value": 0
+    },
+    {
+      "name": "inpShortTermCapitalGainLoss",
+      "value": 0
+    },
+    {
+      "name": "inpWagesAndTips",
+      "value": 150000
+    },
+    {
+      "name": "inpLongTermCapitalGains",
+      "value": 10000
+    },
+    {
+      "name": "inpCapitalLossCarryover",
+      "value": 0
+    },
+    {
+      "name": "inpScheduleADeductions",
+      "value": 40000
+    },
+    {
+      "name": "inpQualifiedBusinessIncome",
+      "value": 0
+    },
+    {
+      "name": "inpScheduleASALT",
+      "value": null
+    },
+    {
+      "name": "inpAMTOtherPreferences",
+      "value": 0
+    },
+    {
+      "name": "inpTaxWithheld",
+      "value": 20000
+    },
+    {
+      "name": "inpAdditionalTax",
+      "value": 0
+    }
+  ],
+  "expectedResults": {
+    "rmd": 0,
+    "taxable_social_security": 0,
+    "agi": 164000,
+    "standard_deduction": 32200,
+    "applicable_deduction": 40000,
+    "adjusted_taxable_income": 124000,
+    "taxable_ordinary_income": 111000,
+    "taxable_preferential_income": 13000,
+    "ordinary_tax": 13844,
+    "ltcg_tax": 1950,
+    "niit": 0,
+    "amt_owed": 0,
+    "total_tax": 15794,
+    "tax_paid": 20000,
+    "due_or_refund": -4206,
+    "effective_rate": 0.096305,
+    "additional_ltcg_at_0pct": 0,
+    "left_before_schedule_a": 0
+  }
+}

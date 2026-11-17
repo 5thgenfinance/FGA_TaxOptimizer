@@ -1,0 +1,112 @@
+{
+  "schemaVersion": "1.0",
+  "reportTitle": "Test 4 - Single age 75 with RMD, Social Security and gains",
+  "lastUpdated": "2026-11-17T15:00:00",
+  "workbookVersion": "test case",
+  "inputs": [
+    {
+      "name": "inpTaxYear",
+      "value": 2026
+    },
+    {
+      "name": "inpFilingStatus",
+      "value": "Single"
+    },
+    {
+      "name": "inpDateOfBirth",
+      "value": "1951-07-04"
+    },
+    {
+      "name": "inpSpouseDateOfBirth",
+      "value": null
+    },
+    {
+      "name": "inpPriorYearEndIRABalance",
+      "value": 800000
+    },
+    {
+      "name": "inpSocialSecurityBenefits",
+      "value": 30000
+    },
+    {
+      "name": "inpIRAConversion",
+      "value": 0
+    },
+    {
+      "name": "inpQualifiedDividends",
+      "value": 3000
+    },
+    {
+      "name": "inpTaxableInterest",
+      "value": 5000
+    },
+    {
+      "name": "inpOrdinaryDividends",
+      "value": 3000
+    },
+    {
+      "name": "inpAdditionalIncome",
+      "value": 0
+    },
+    {
+      "name": "inpShortTermCapitalGainLoss",
+      "value": 0
+    },
+    {
+      "name": "inpWagesAndTips",
+      "value": 0
+    },
+    {
+      "name": "inpLongTermCapitalGains",
+      "value": 20000
+    },
+    {
+      "name": "inpCapitalLossCarryover",
+      "value": 0
+    },
+    {
+      "name": "inpScheduleADeductions",
+      "value": 0
+    },
+    {
+      "name": "inpQualifiedBusinessIncome",
+      "value": 0
+    },
+    {
+      "name": "inpScheduleASALT",
+      "value": null
+    },
+    {
+      "name": "inpAMTOtherPreferences",
+      "value": 0
+    },
+    {
+      "name": "inpTaxWithheld",
+      "value": 4000
+    },
+    {
+      "name": "inpAdditionalTax",
+      "value": 0
+    }
+  ],
+  "expectedResults": {
+    "rmd": 32520.33,
+    "taxable_social_security": 25500,
+    "agi": 86020.33,
+    "standard_deduction": 23489,
+    "applicable_deduction": 23489,
+    "adjusted_taxable_income": 62531.33,
+    "taxable_ordinary_income": 39531.33,
+    "taxable_preferential_income": 23000,
+    "ordinary_tax": 4495.76,
+    "ltcg_tax": 1962.2,
+    "niit": 0,
+    "amt_owed": 0,
+    "total_tax": 6457.96,
+    "tax_paid": 4000,
+    "due_or_refund": 2457.96,
+    "effective_rate": 0.075075,
+    "additional_ltcg_at_0pct": 0,
+    "left_before_schedule_a": 23489
+  }
+}
