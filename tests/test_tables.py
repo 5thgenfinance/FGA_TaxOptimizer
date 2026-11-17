@@ -21,25 +21,30 @@ def _edit(path: Path, fn):
 
 def test_real_data_loads():
     t = load_all()
-    assert len(t.rows("tblTaxRate")) == 13
-    assert len(t.rows("tblTaxRateLTCG")) == 6
-    assert len(t.rows("tblUniformRMDFactors")) == 28
-    assert len(t.rows("tblStandDeductionBase")) == 4
-    assert len(t.rows("tblAMT")) == 3
-    assert len(t.rows("tblNIIT")) == 3
+    assert len(t.rows("tblTaxRate")) == 21
+    assert len(t.rows("tblTaxRateLTCG")) == 9
+    assert len(t.rows("tblUniformRMDFactors")) == 49
+    assert len(t.rows("tblStandDeductionBase")) == 6
+    assert len(t.rows("tblAMT")) == 6
+    assert len(t.rows("tblNIIT")) == 6
     assert len(t.rows("tblInputMap")) == 21
 
 
-def test_supported_years_is_2026_only():
-    assert load_all().supported_years() == [2026]
+def test_supported_years():
+    assert load_all().supported_years() == [2026, 2027]
+
+
+def test_no_warnings_when_every_year_has_a_top_bracket():
+    assert load_all().warnings == ()
 
 
 def test_known_values():
     t = load_all()
     rmd = {r.Age: r.LifeExpectancyFactor for r in t.rows("tblUniformRMDFactors")}
-    assert rmd[74] == Decimal("25.5")
+    assert rmd[72] == Decimal("27.4") and rmd[74] == Decimal("25.5") and rmd[120] == Decimal("2")
     amt = {(r.Year, r.Status): r for r in t.rows("tblAMT")}
     assert amt[(2026, "Jointly")].Exemption == Decimal("140200")
+    assert amt[(2027, "Single")].Exemption == Decimal("93000")
 
 
 def test_input_map_is_ordered():
@@ -47,8 +52,10 @@ def test_input_map_is_ordered():
     assert orders == sorted(orders) == list(range(1, 22))
 
 
-def test_warns_on_missing_2026_top_bracket():
-    assert any("tblTaxRate.csv 2026" in w for w in load_all().warnings)
+def test_warns_when_top_bracket_is_missing(data_copy):
+    _edit(data_copy / "tblTaxRate.csv", lambda s: s.replace("2026,7,9999999,9999999,0.37\n", ""))
+    warnings = load_all(data_copy).warnings
+    assert any("tblTaxRate.csv 2026" in w for w in warnings)
 
 
 def test_sentinel_detection():

@@ -46,11 +46,12 @@ def test_legacy_matches_workbook(golden_inputs, tables):
     assert len(r.ordinary_allocations) == 6
 
 
-def test_fixed_mode_same_tax_with_flagged_salt(golden_inputs, tables):
+def test_fixed_mode_same_tax_and_stacked_amt(golden_inputs, tables):
     r = compute(golden_inputs, tables, legacy=False)
     approx(r.total_tax, 22559.27)
     approx(r.due_or_refund, 6059.27)
     assert r.salt_addback == 0
+    approx(r.amt_tentative, 1325.14)  # gains fall in the 0% bracket, not a flat 15%
     assert any("SALT" in w for w in r.warnings)
 
 
@@ -60,9 +61,14 @@ def test_alias_status_and_zero_agi(tables):
     assert r.agi == 0 and r.effective_rate is None and r.total_tax == 0
 
 
-def test_income_above_top_bracket_warns(tables):
+def test_top_bracket_is_taxed_at_37_percent(tables):
     inputs = FilerInputs(tax_year=2026, filing_status="Single", dob=date(1980, 1, 1), wages_and_tips=900_000)
-    assert any("highest bracket" in w for w in compute(inputs, tables).warnings)
+    fixed = compute(inputs, tables)
+    assert not any("highest bracket" in w for w in fixed.warnings)
+    assert [a.bracket.rate for a in fixed.ordinary_allocations][-1] == Decimal("0.37")
+    assert fixed.ordinary_allocations[-1].amount == fixed.taxable_ordinary - Decimal(640_600)
+    legacy = compute(inputs, tables, legacy=True, as_of_year=2026)
+    assert any("highest bracket" in w for w in legacy.warnings)  # six-row workbook estimator
 
 
 def test_unsupported_year_raises(tables):

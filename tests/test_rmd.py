@@ -20,11 +20,17 @@ def test_zero_before_start_age(tables):
     assert calc_rmd(date(1960, 1, 1), 2026, 500_000, tables) == 0
 
 
-def test_missing_factor_raises(tables):
+def test_age_72_uses_the_irs_divisor(tables):
+    assert calc_rmd(date(1950, 6, 1), 2022, 274_000, tables) == Decimal(10_000)
+
+
+def test_oldest_ages_have_factors(tables):
+    assert calc_rmd(date(1906, 1, 1), 2026, 200, tables) == Decimal(100)  # age 120, divisor 2.0
+
+
+def test_age_beyond_table_raises(tables):
     with pytest.raises(MissingDataError):
-        calc_rmd(date(1925, 1, 1), 2026, 100_000, tables)  # age 101, not in table
-    with pytest.raises(MissingDataError):
-        calc_rmd(date(1950, 6, 1), 2022, 100_000, tables)  # age 72, not in table
+        calc_rmd(date(1900, 6, 1), 2026, 100_000, tables)  # age 126
 
 
 def test_negative_balance_rejected(tables):

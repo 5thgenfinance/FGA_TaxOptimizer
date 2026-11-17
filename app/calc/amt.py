@@ -1,8 +1,9 @@
-"""Alternative minimum tax (simplified, as in the workbook)."""
+"""Alternative minimum tax."""
 from __future__ import annotations
 
 from decimal import Decimal
 
+from app.calc import ltcg, ordinary
 from app.calc.common import ZERO, MissingDataError, dec, get_param
 from app.tables import Tables
 
@@ -38,8 +39,13 @@ def exemption(amti, tables: Tables, year: int, status: str) -> Decimal:
 
 
 def tentative_tax(regular_taxable_income, salt_add, other_preferences, ltcg_pool,
-                  tables: Tables, year: int, status: str) -> Decimal:
-    """AMT_Tax: 26%/28% on the ordinary part plus a flat rate on the LTCG pool."""
+                  tables: Tables, year: int, status: str, stacked: bool = False) -> Decimal:
+    """AMT_Tax: 26%/28% on the ordinary part plus tax on the LTCG pool.
+
+    stacked=False reproduces the workbook (flat rate from tblParameters on the
+    whole pool). stacked=True taxes the pool at the 0/15/20% LTCG brackets,
+    stacked above the ordinary AMT base (Form 6251, Part III).
+    """
     row = _row(tables, year, status)
     amti = dec(regular_taxable_income) + dec(salt_add) + dec(other_preferences)
     base = max(ZERO, amti - exemption(amti, tables, year, status))
@@ -50,11 +56,16 @@ def tentative_tax(regular_taxable_income, salt_add, other_preferences, ltcg_pool
         ordinary_tax = ordinary_part * row.Lower
     else:
         ordinary_tax = row.Breakpoint * row.Lower + (ordinary_part - row.Breakpoint) * row.Upper
-    return ordinary_tax + ltcg_part * get_param(tables, year, "AMT_LTCG_FlatRate", status)
+    if stacked:
+        brackets = ltcg.ltcg_brackets(tables, year, status)
+        ltcg_tax = ordinary.total_tax(ltcg.stacked(base, ordinary_part, ltcg_part, brackets))
+    else:
+        ltcg_tax = ltcg_part * get_param(tables, year, "AMT_LTCG_FlatRate", status)
+    return ordinary_tax + ltcg_tax
 
 
 def amt_owed(regular_taxable_income, salt_add, other_preferences, ltcg_pool,
-             tables: Tables, year: int, status: str, regular_tax) -> Decimal:
+             tables: Tables, year: int, status: str, regular_tax, stacked: bool = False) -> Decimal:
     tentative = tentative_tax(regular_taxable_income, salt_add, other_preferences,
-                              ltcg_pool, tables, year, status)
+                              ltcg_pool, tables, year, status, stacked)
     return max(ZERO, tentative - dec(regular_tax))

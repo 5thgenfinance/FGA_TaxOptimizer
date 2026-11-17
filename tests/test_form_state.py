@@ -2,7 +2,6 @@ from datetime import date
 from decimal import Decimal
 
 from app import form_state as fs
-from app.models import FilerInputs
 
 
 def make_state(tables):
@@ -11,10 +10,17 @@ def make_state(tables):
     return state
 
 
+def test_default_tax_year_prefers_current_year(tables):
+    assert fs.default_tax_year(tables, today=date(2026, 11, 16)) == 2026
+    assert fs.default_tax_year(tables, today=date(2027, 3, 1)) == 2027
+    assert fs.default_tax_year(tables, today=date(2020, 1, 1)) == 2027  # not supported: latest year
+    assert fs.default_tax_year(tables, today=date(2031, 1, 1)) == 2027
+
+
 def test_defaults_build_valid_inputs(tables):
     state = make_state(tables)
     inputs = fs.read_state(state, tables)
-    assert inputs.tax_year == 2026 and inputs.filing_status == "Single"
+    assert inputs.tax_year == fs.default_tax_year(tables) and inputs.filing_status == "Single"
     assert inputs.dob == date(1960, 1, 1)
     assert inputs.spouse_dob is None and inputs.schedule_a_salt is None
     assert inputs.wages_and_tips == Decimal(0)

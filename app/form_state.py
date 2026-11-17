@@ -26,9 +26,16 @@ def flag_key(field: str) -> str:
     return f"has_{field}"
 
 
+def default_tax_year(tables: Tables, today: date | None = None) -> int:
+    """The current calendar year if supported, otherwise the latest supported year."""
+    years = tables.supported_years()
+    current = (today or date.today()).year
+    return current if current in years else years[-1]
+
+
 def default_value(row, tables: Tables) -> Any:
     if row.Field == "tax_year":
-        return tables.supported_years()[-1]
+        return default_tax_year(tables)
     if row.Field == "filing_status":
         return STATUS_OPTIONS[0]
     if row.Type == "date":

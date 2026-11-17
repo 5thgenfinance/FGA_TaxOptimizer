@@ -64,10 +64,12 @@ def compute(inputs: FilerInputs, tables: Tables | None = None, legacy: bool = Fa
             as_of_year: int | None = None) -> TaxResult:
     """Run the full estimate.
 
-    legacy=True reproduces the workbook (six ordinary rows, TODAY()-based age
-    year, blank SALT = full cap, no NII or taxable-income clamps).
-    legacy=False applies fixes 4, 9 and 10 from the plan and uses every
-    bracket in the table. Zero-denominator ratios return None in both modes.
+    legacy=True reproduces the workbook: six ordinary rows, TODAY()-based age
+    year, blank SALT = full cap, RMD left out of Social Security provisional
+    income, flat-rate AMT on capital gains, and no NII or taxable-income clamps.
+    legacy=False applies the planned fixes: tax-year-based age, RMD included in
+    provisional income, AMT capital gains stacked at 0/15/20%, clamps, and
+    every bracket in the tables. Zero-denominator ratios return None in both modes.
     """
     t = tables or get_tables()
     status = normalize_status(inputs.filing_status, t)
@@ -86,6 +88,8 @@ def compute(inputs: FilerInputs, tables: Tables | None = None, legacy: bool = Fa
     distribution = rmd.calc_rmd(inputs.dob, year, inputs.prior_ye_ira_balance, t)
     pref_subtotal = lt + carry + qd
     other_income = interest + od + addl + st + wages + lt + carry + conv
+    if not legacy:
+        other_income += distribution
     taxable_ss = socialsec.taxable_ss(ssi, other_income, status, t, year)
     agi = distribution + taxable_ss + conv + st + wages + lt + interest + od + addl + carry
 
@@ -135,8 +139,9 @@ def compute(inputs: FilerInputs, tables: Tables | None = None, legacy: bool = Fa
     amti = ati + salt_add + other_prefs
     amt_rate = amt.exemption_rate(t, year, status)
     amt_ex = amt.exemption(amti, t, year, status)
-    amt_tent = amt.tentative_tax(ati, salt_add, other_prefs, taxable_pref, t, year, status)
-    amt_due = amt.amt_owed(ati, salt_add, other_prefs, taxable_pref, t, year, status, regular)
+    stacked = not legacy
+    amt_tent = amt.tentative_tax(ati, salt_add, other_prefs, taxable_pref, t, year, status, stacked)
+    amt_due = amt.amt_owed(ati, salt_add, other_prefs, taxable_pref, t, year, status, regular, stacked)
 
     total = regular + niit_amount + amt_due
     paid = dec(inputs.tax_withheld) + dec(inputs.additional_tax)
