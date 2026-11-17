@@ -1,0 +1,112 @@
+{
+  "schemaVersion": "1.0",
+  "reportTitle": "Test 6 - 2026 MFJ harvesting gains at 0%",
+  "lastUpdated": "2026-11-17T15:00:00",
+  "workbookVersion": "test case",
+  "inputs": [
+    {
+      "name": "inpTaxYear",
+      "value": 2026
+    },
+    {
+      "name": "inpFilingStatus",
+      "value": "Jointly"
+    },
+    {
+      "name": "inpDateOfBirth",
+      "value": "1980-01-20"
+    },
+    {
+      "name": "inpSpouseDateOfBirth",
+      "value": "1981-06-02"
+    },
+    {
+      "name": "inpPriorYearEndIRABalance",
+      "value": 0
+    },
+    {
+      "name": "inpSocialSecurityBenefits",
+      "value": 0
+    },
+    {
+      "name": "inpIRAConversion",
+      "value": 0
+    },
+    {
+      "name": "inpQualifiedDividends",
+      "value": 0
+    },
+    {
+      "name": "inpTaxableInterest",
+      "value": 0
+    },
+    {
+      "name": "inpOrdinaryDividends",
+      "value": 0
+    },
+    {
+      "name": "inpAdditionalIncome",
+      "value": 0
+    },
+    {
+      "name": "inpShortTermCapitalGainLoss",
+      "value": 0
+    },
+    {
+      "name": "inpWagesAndTips",
+      "value": 60000
+    },
+    {
+      "name": "inpLongTermCapitalGains",
+      "value": 30000
+    },
+    {
+      "name": "inpCapitalLossCarryover",
+      "value": 0
+    },
+    {
+      "name": "inpScheduleADeductions",
+      "value": 0
+    },
+    {
+      "name": "inpQualifiedBusinessIncome",
+      "value": 0
+    },
+    {
+      "name": "inpScheduleASALT",
+      "value": null
+    },
+    {
+      "name": "inpAMTOtherPreferences",
+      "value": 0
+    },
+    {
+      "name": "inpTaxWithheld",
+      "value": 4000
+    },
+    {
+      "name": "inpAdditionalTax",
+      "value": 0
+    }
+  ],
+  "expectedResults": {
+    "rmd": 0,
+    "taxable_social_security": 0,
+    "agi": 90000,
+    "standard_deduction": 32200,
+    "applicable_deduction": 32200,
+    "adjusted_taxable_income": 57800,
+    "taxable_ordinary_income": 27800,
+    "taxable_preferential_income": 30000,
+    "ordinary_tax": 2840,
+    "ltcg_tax": 0,
+    "niit": 0,
+    "amt_owed": 0,
+    "total_tax": 2840,
+    "tax_paid": 4000,
+    "due_or_refund": -1160,
+    "effective_rate": 0.031556,
+    "additional_ltcg_at_0pct": 41100,
+    "left_before_schedule_a": 32200
+  }
+}
