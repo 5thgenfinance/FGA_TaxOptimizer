@@ -37,9 +37,17 @@ def test_css_uses_brand_colors_fonts_and_selectors():
         assert expected in css, expected
 
 
+def test_css_assigns_heading_font_to_headings_and_body_font_to_text():
+    css = branding.css(branding.load_brand(Path("does-not-exist.json")))
+    heading_rule = next(r for r in css.split("}") if "'Playfair Display', serif" in r and "h1" in r)
+    assert ".fga-title" in heading_rule and "stMetricValue" in heading_rule
+    body_rule = next(r for r in css.split("}") if "'Source Sans 3', sans-serif" in r)
+    assert ".stApp p" in body_rule and ".stApp input" in body_rule
+
+
 def test_header_without_logo_has_title_and_tagline_but_no_image():
     brand = branding.load_brand(Path("does-not-exist.json"))
-    brand["logos"] = {"shield_light": "assets/brand/nope.jpg"}
+    brand["logos"] = {"shield_dark": "assets/brand/nope.jpg"}
     html = branding.header_html(brand, "Smith & <Co>")
     assert "Smith &amp; &lt;Co&gt;" in html and "Registered Investment Adviser" in html
     assert "<img" not in html
@@ -50,7 +58,7 @@ def test_header_embeds_logo_when_present(tmp_path, monkeypatch):
     image.write_bytes(b"\x89PNG\r\n\x1a\n" + b"0" * 20)
     monkeypatch.setattr(branding, "REPO_ROOT", tmp_path)
     brand = branding.load_brand(Path("does-not-exist.json"))
-    brand["logos"] = {"shield_light": "logo.png"}
+    brand["logos"] = {"shield_dark": "logo.png"}
     assert 'src="data:image/png;base64,' in branding.header_html(brand, "T")
 
 
@@ -81,6 +89,14 @@ def test_streamlit_theme_matches_brand_file():
     assert config["backgroundColor"] == colors["offwhite"]
     assert config["textColor"] == colors["navy"]
     assert config["secondaryBackgroundColor"] == branding.PANEL
+
+
+def test_app_uses_the_navy_logo_files():
+    brand = branding.load_brand()
+    assert brand["logos"]["shield_dark"].endswith("shield_navy.jpg")
+    assert brand["logos"]["ribbon_dark"].endswith("ribbon_navy.jpg")
+    source = (REPO_ROOT / "streamlit_app.py").read_text(encoding="utf-8")
+    assert '"ribbon_dark"' in source and '"shield_dark"' in source and "ribbon_navy.jpg" in source
 
 
 def test_brand_images_exist_in_the_repository():
