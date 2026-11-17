@@ -2,12 +2,13 @@
 from __future__ import annotations
 
 from datetime import date
+from decimal import Decimal
 from html import escape
 
 import streamlit as st
 
 from app import (branding, excel_import, form_state, input_help, pdf_report, report, scenario_io,
-                 version as app_version)
+                 version as app_version, whatif)
 from app.calc.common import CalcError
 from app.calc.engine import compute
 from app.display import display_records
@@ -213,6 +214,79 @@ def _results_tab(tables) -> None:
                      use_container_width=True)
 
 
+def _reset_whatif() -> None:
+    for key in whatif.SLIDER_KEYS.values():
+        st.session_state[key] = 0
+
+
+def _change_label(diff: Decimal) -> str | None:
+    """A metric delta such as '+$1,200', or None when there is no change."""
+    text = whatif.signed_money(diff)
+    return None if text == "$0" else text
+
+
+def _whatif_tab(tables) -> None:
+    """Sliders that adjust a copy of the inputs and compare the results with the current ones."""
+    try:
+        inputs = form_state.read_state(st.session_state, tables)
+        legacy = st.session_state.get("legacy_mode", False)
+        base = compute(inputs, tables, legacy=legacy)
+    except (CalcError, ValueError) as exc:
+        st.error(f"Cannot calculate: {exc}")
+        return
+
+    st.caption("Move a slider to see how the result changes. These sliders only change a copy of your inputs; "
+               "the Inputs panel and the Results tab stay as entered.")
+    left, right = st.columns(2)
+    with left:
+        ltcg = st.slider("Long-term capital gains: add or remove ($)", -50_000, 250_000, 0, 1_000,
+                         key=whatif.SLIDER_KEYS["ltcg"], format="%+d",
+                         help="Added to your long-term capital gains. A negative amount removes gains.")
+        stcg = st.slider("Short-term capital gains: add or remove ($)", -50_000, 100_000, 0, 1_000,
+                         key=whatif.SLIDER_KEYS["stcg"], format="%+d",
+                         help="Added to your short-term gain or loss, which is taxed as ordinary income. "
+                              "A negative amount removes gains.")
+    with right:
+        extra_deductions = st.slider("Additional Schedule A deductions ($)", 0, 100_000, 0, 1_000,
+                                     key=whatif.SLIDER_KEYS["extra_deductions"],
+                                     help="Added to your Schedule A deductions, for example more charitable gifts. "
+                                          "They lower tax only once total itemized deductions exceed the standard deduction.")
+        extra_ira = st.slider("Additional IRA distribution ($)", 0, 250_000, 0, 1_000,
+                              key=whatif.SLIDER_KEYS["extra_ira"],
+                              help="Extra taxable money taken from a traditional IRA, or a Roth conversion. It is taxed "
+                                   "as ordinary income and does not change the required minimum distribution.")
+    st.button("Reset sliders", key="wi_reset", on_click=_reset_whatif)
+
+    adjustments = whatif.Adjustments(Decimal(ltcg), Decimal(stcg), Decimal(extra_deductions), Decimal(extra_ira))
+    alt_inputs = whatif.adjusted_inputs(inputs, adjustments)
+    try:
+        alt = compute(alt_inputs, tables, legacy=legacy)
+    except (CalcError, ValueError) as exc:
+        st.error(f"Cannot calculate the what-if: {exc}")
+        return
+
+    effective_change = whatif.signed_points(base.effective_rate, alt.effective_rate)
+    columns = st.columns(4)
+    columns[0].metric("Total tax", report.fmt_money(alt.total_tax), _change_label(alt.total_tax - base.total_tax),
+                      delta_color="inverse")
+    columns[1].metric(report.due_label(alt), report.fmt_money(abs(alt.due_or_refund)),
+                      _change_label(alt.due_or_refund - base.due_or_refund), delta_color="inverse",
+                      help="The delta is the change in the amount due. A negative figure means less owed or a larger refund.")
+    columns[2].metric("Effective rate (of AGI)", report.fmt_rate(alt.effective_rate),
+                      None if effective_change in ("n/a", "0.00 pts") else effective_change, delta_color="inverse")
+    change = whatif.tax_on_the_change(base, alt, adjustments)
+    columns[3].metric("Tax on the change", "n/a" if change is None else report.fmt_rate(change),
+                      help="The extra (or lower) total tax divided by the net income added or removed by the sliders. "
+                           "Deductions are not income, so a deduction-only change shows n/a.")
+    st.dataframe(whatif.comparison(base, inputs, alt, alt_inputs), hide_index=True, use_container_width=True)
+    for warning in alt.warnings:
+        if warning not in base.warnings:
+            st.warning(warning)
+    st.caption("Realizing more gains or income also raises AGI, which can change taxable Social Security and the "
+               "net investment income tax; both are included in the figures above. Medicare premium surcharges "
+               "(IRMAA) and state taxes are not modeled.")
+
+
 def _status_tab(tables) -> None:
     st.success("All tables loaded and validated.")
     years = tables.supported_years()
@@ -261,9 +335,11 @@ def main() -> None:
     st.markdown(f'<div class="fga-meta">Tax year {year} &nbsp;|&nbsp; Last updated {updated}</div>',
                 unsafe_allow_html=True)
 
-    results_tab, tables_tab, status_tab = st.tabs(["Results", "Tables", "Status"])
+    results_tab, whatif_tab, tables_tab, status_tab = st.tabs(["Results", "What-if", "Tables", "Status"])
     with results_tab:
         _results_tab(tables)
+    with whatif_tab:
+        _whatif_tab(tables)
     with tables_tab:
         _tables_tab(tables)
     with status_tab:

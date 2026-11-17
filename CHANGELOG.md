@@ -8,6 +8,7 @@ Versions 0.0.1 to 0.4.0 are labels applied afterwards to the phases in PROJECT_P
 
 ## [Unreleased]
 ### Added
+- What-if tab: sliders to add or remove long-term capital gains and short-term capital gains, add Schedule A deductions, and add an IRA distribution (taxed as ordinary income like a Roth conversion). It compares the current result with the adjusted one: total tax, amount due, effective rate, tax on the change, and a table of 14 measures. The sliders change a copy of the inputs only.
 - Results: two new figures under the headline rows. 'Additional LTCG at 0%' is the long-term capital gains you could still realize in the 0% bracket (the 0% ceiling less taxable ordinary income and the gains already in it). 'Left before Schedule A' is how much more Schedule A deductions fit before itemizing beats the standard deduction. Each has a tooltip.
 
 ## [0.5.0] - 2026-11-17
