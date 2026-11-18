@@ -9,6 +9,6 @@ dist/
 build/
 .env
 ~$*.xlsx
-
+*.toml
 # Saved client scenarios must never be committed
 saved_scenarios/
