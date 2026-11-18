@@ -7,7 +7,7 @@ from html import escape
 
 import streamlit as st
 
-from app import (branding, curves, excel_import, form_state, input_help, pdf_report, report, scenario_io,
+from app import (auth_gate, branding, curves, excel_import, form_state, input_help, pdf_report, report, scenario_io,
                  version as app_version, whatif)
 from app.calc.common import CalcError
 from app.calc.engine import compute
@@ -25,6 +25,7 @@ EXCEL_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
 st.set_page_config(page_title=APP_TITLE, page_icon=str(FAVICON) if FAVICON.is_file() else None,
                    layout="wide", initial_sidebar_state="expanded")
+auth_gate.gate()  # shared password; off unless app_password is set in the app's secrets
 
 
 @st.cache_resource(show_spinner=False)
