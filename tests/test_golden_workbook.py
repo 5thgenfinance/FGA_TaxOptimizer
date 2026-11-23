@@ -74,7 +74,7 @@ def test_top_bracket_is_taxed_at_37_percent(tables):
 def test_unsupported_year_raises(tables):
     from app.calc.common import MissingDataError
     with pytest.raises(MissingDataError):
-        compute(FilerInputs(tax_year=2025, filing_status="Single", dob=date(1980, 1, 1)), tables)
+        compute(FilerInputs(tax_year=2024, filing_status="Single", dob=date(1980, 1, 1)), tables)
 
 
 def test_deduction_exceeding_income_clamps_in_fixed_mode(tables):
