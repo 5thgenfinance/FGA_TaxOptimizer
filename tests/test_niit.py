@@ -8,8 +8,9 @@ from app.calc.common import MissingDataError
 
 def test_threshold_lookup(tables):
     assert niit.niit_threshold(tables, 2026, "Jointly") == 250_000
+    assert niit.niit_threshold(tables, 2025, "Single") == 200_000
     with pytest.raises(MissingDataError):
-        niit.niit_threshold(tables, 2025, "Single")
+        niit.niit_threshold(tables, 2024, "Single")
 
 
 def test_below_threshold_is_zero(tables):
