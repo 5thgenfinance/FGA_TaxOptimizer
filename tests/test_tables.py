@@ -25,13 +25,13 @@ def test_real_data_loads():
     assert len(t.rows("tblTaxRateLTCG")) == 9
     assert len(t.rows("tblUniformRMDFactors")) == 49
     assert len(t.rows("tblStandDeductionBase")) == 6
-    assert len(t.rows("tblAMT")) == 6
-    assert len(t.rows("tblNIIT")) == 6
+    assert len(t.rows("tblAMT")) == 9
+    assert len(t.rows("tblNIIT")) == 9
     assert len(t.rows("tblInputMap")) == 21
 
 
 def test_supported_years():
-    assert load_all().supported_years() == [2026, 2027]
+    assert load_all().supported_years() == [2025, 2026, 2027]
 
 
 def test_no_warnings_when_every_year_has_a_top_bracket():
@@ -45,6 +45,7 @@ def test_known_values():
     amt = {(r.Year, r.Status): r for r in t.rows("tblAMT")}
     assert amt[(2026, "Jointly")].Exemption == Decimal("140200")
     assert amt[(2027, "Single")].Exemption == Decimal("93000")
+    assert amt[(2025, "Single")].Exemption == Decimal("88100")
 
 
 def test_input_map_is_ordered():

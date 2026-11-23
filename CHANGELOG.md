@@ -7,6 +7,17 @@ The Excel workbook keeps its own scheme (YYYY.MAJOR.MINOR, currently 2026.3.0). 
 Versions 0.0.1 to 0.4.0 are labels applied afterwards to the phases in PROJECT_PLAN.md; their dates are the dates the phases were committed.
 
 ## [Unreleased]
+### Added
+- Tax year 2025 is now selectable. The 2025 ordinary brackets, long-term gains thresholds and standard deduction were already loaded; this adds the missing 2025 rows for AMT (`tblAMT`), the net investment income tax (`tblNIIT`) and the constants (`tblParameters`). Sources: IRS Rev. Proc. 2024-40 and the 2025 Form 6251 instructions for the AMT exemption (88,100 single, 137,000 joint, 68,500 separate), its 25% phase-out starting at 626,350 and 1,252,700 (ending at 978,750 and 1,800,700; 900,350 separate), and the 28% AMT breakpoint (239,100; 119,550 separate); the age 65 additions of 2,000 (single) and 1,600 (joint and separate); and the One Big Beautiful Bill Act for the 2025 SALT cap of 40,000 (20,000 separate) and the 6,000 senior deduction. NIIT thresholds and Social Security base amounts are unchanged.
+- `tests/test_2025_tables.py`: tax at every 2025 bracket top for single and joint, the 2025 gains thresholds, AMT exemption phase-out and breakpoint, NIIT thresholds, senior standard deductions, and a calculation of the owner's filed 2025 return (regular tax within 1.50 of the 7,500 on line 16).
+- A shared-password sign-in (`app/auth_gate.py`), ported from the FGA forecaster. It is off unless `app_password` is set in the app's secrets, so `test` and local runs open normally. Set the secret only on the deployed app.
+
+### Changed
+- The table tests now expect supported years 2025, 2026 and 2027 and nine AMT and NIIT rows. The unsupported-year test uses 2024.
+
+### Known limits for 2025
+- The 2025 SALT cap is the flat 40,000. The phase-down above 500,000 of income is not modeled, as for the other years.
+- The 170 foreign tax credit and other credits on the 2025 return are not modeled.
 
 ## [1.0.0] - 2026-11-17
 First release for deployment. The calculations, screens and documents are unchanged from 0.5.0 apart from the additions below. Deployment steps are in `docs/DEPLOYMENT.md`.
